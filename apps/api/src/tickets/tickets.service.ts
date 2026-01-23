@@ -26,6 +26,12 @@ export class TicketsService {
 
     if (query.status) {
       filters.push({ status: query.status });
+    } else if (query.statusGroup && query.statusGroup !== 'all') {
+      if (query.statusGroup === 'open') {
+        filters.push({ status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } });
+      } else if (query.statusGroup === 'resolved') {
+        filters.push({ status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } });
+      }
     }
 
     if (query.priority) {
@@ -57,13 +63,17 @@ export class TicketsService {
 
     const where = filters.length > 1 ? { AND: filters } : filters[0] ?? {};
 
+    const orderByField = query.sort ?? 'updatedAt';
+    const orderByDirection = query.order ?? 'desc';
+    const orderBy = { [orderByField]: orderByDirection } as Prisma.TicketOrderByWithRelationInput;
+
     const [total, data] = await Promise.all([
       this.prisma.ticket.count({ where }),
       this.prisma.ticket.findMany({
         where,
         skip,
         take: pageSize,
-        orderBy: { updatedAt: 'desc' },
+        orderBy,
         include: {
           requester: true,
           assignee: true,
@@ -97,7 +107,7 @@ export class TicketsService {
           orderBy: { createdAt: 'asc' },
           include: { author: true }
         },
-        events: { orderBy: { createdAt: 'asc' } }
+        events: { orderBy: { createdAt: 'asc' }, include: { createdBy: true } }
       }
     });
 
@@ -141,6 +151,18 @@ export class TicketsService {
       }
     });
 
+    const displayId = this.buildDisplayId(ticket.assignedTeam?.name ?? null, ticket.createdAt, ticket.number);
+    const updatedTicket = await this.prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { displayId },
+      include: {
+        requester: true,
+        assignee: true,
+        assignedTeam: true,
+        category: true
+      }
+    });
+
     await this.prisma.ticketEvent.create({
       data: {
         ticketId: ticket.id,
@@ -154,7 +176,7 @@ export class TicketsService {
       }
     });
 
-    return ticket;
+    return updatedTicket;
   }
 
   async addMessage(ticketId: string, payload: AddTicketMessageDto, user: AuthUser) {
@@ -337,12 +359,24 @@ export class TicketsService {
       throw new ForbiddenException('Invalid status transition');
     }
 
+    const resolvedAt =
+      payload.status === TicketStatus.RESOLVED ? new Date() : payload.status === TicketStatus.REOPENED ? null : ticket.resolvedAt;
+    const closedAt =
+      payload.status === TicketStatus.CLOSED ? new Date() : payload.status === TicketStatus.REOPENED ? null : ticket.closedAt;
+    const completedAt =
+      payload.status === TicketStatus.RESOLVED || payload.status === TicketStatus.CLOSED
+        ? new Date()
+        : payload.status === TicketStatus.REOPENED
+        ? null
+        : ticket.completedAt ?? null;
+
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: {
         status: payload.status,
-        resolvedAt: payload.status === TicketStatus.RESOLVED ? new Date() : payload.status === TicketStatus.REOPENED ? null : ticket.resolvedAt,
-        closedAt: payload.status === TicketStatus.CLOSED ? new Date() : payload.status === TicketStatus.REOPENED ? null : ticket.closedAt
+        resolvedAt,
+        closedAt,
+        completedAt
       },
       include: {
         requester: true,
@@ -532,6 +566,33 @@ export class TicketsService {
     };
 
     return allowed[from].includes(to);
+  }
+
+  private buildDisplayId(teamName: string | null, createdAt: Date, ticketNumber: number) {
+    const departmentCode = this.getDepartmentCode(teamName);
+    const yyyy = createdAt.getFullYear();
+    const mm = String(createdAt.getMonth() + 1).padStart(2, '0');
+    const dd = String(createdAt.getDate()).padStart(2, '0');
+    const sequence = String(ticketNumber).padStart(3, '0');
+    return `${departmentCode}_${yyyy}${mm}${dd}_${sequence}`;
+  }
+
+  private getDepartmentCode(teamName: string | null) {
+    if (!teamName) {
+      return 'NA';
+    }
+    const words = teamName
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .split(' ')
+      .map((word) => word.trim())
+      .filter(Boolean);
+    if (words.length === 0) {
+      return 'NA';
+    }
+    if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase();
+    }
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
   }
 
   private async routeTeam(subject: string, description: string) {

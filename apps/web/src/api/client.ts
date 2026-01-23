@@ -35,10 +35,16 @@ export type RoutingRule = {
 export type TicketRecord = {
   id: string;
   number: number;
+  displayId?: string | null;
   subject: string;
   status: string;
   priority: string;
+  channel?: string;
+  createdAt: string;
   updatedAt: string;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  completedAt?: string | null;
   requester?: UserRef | null;
   assignee?: UserRef | null;
   assignedTeam?: TeamRef | null;
@@ -58,6 +64,7 @@ export type TicketEvent = {
   type: string;
   createdAt: string;
   payload?: Record<string, unknown> | null;
+  createdBy?: UserRef | null;
 };
 
 export type TicketDetail = TicketRecord & {

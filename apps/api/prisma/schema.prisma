@@ -120,6 +120,7 @@ model TeamMember {
 model Ticket {
   id             String         @id @default(uuid())
   number         Int            @unique @default(autoincrement())
+  displayId      String?        @unique
   subject        String
   description    String
   status         TicketStatus   @default(NEW)
@@ -132,6 +133,7 @@ model Ticket {
   dueAt          DateTime?
   resolvedAt     DateTime?
   closedAt       DateTime?
+  completedAt    DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

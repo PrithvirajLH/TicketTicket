@@ -11,23 +11,49 @@ import {
 
 const prisma = new PrismaClient();
 
+function getDepartmentCode(teamName: string | null) {
+  if (!teamName) {
+    return 'NA';
+  }
+  const words = teamName
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .split(' ')
+    .map((word) => word.trim())
+    .filter(Boolean);
+  if (words.length === 0) {
+    return 'NA';
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  return `${words[0][0]}${words[1][0]}`.toUpperCase();
+}
+
+function buildDisplayId(teamName: string | null, createdAt: Date, ticketNumber: number) {
+  const yyyy = createdAt.getFullYear();
+  const mm = String(createdAt.getMonth() + 1).padStart(2, '0');
+  const dd = String(createdAt.getDate()).padStart(2, '0');
+  const sequence = String(ticketNumber).padStart(3, '0');
+  return `${getDepartmentCode(teamName)}_${yyyy}${mm}${dd}_${sequence}`;
+}
+
 async function seedDev() {
   const teams = [
     { name: 'IT Service Desk', slug: 'it-service-desk', description: 'Devices, access, core systems' },
     { name: 'HR Operations', slug: 'hr-operations', description: 'People ops, onboarding, payroll' },
-    { name: 'AI Enablement', slug: 'ai-enablement', description: 'AI tooling, models, data requests' },
+    { name: 'AI', slug: 'ai', description: 'AI tooling, models, data requests' },
     { name: 'Medicaid Pending', slug: 'medicaid-pending', description: 'Eligibility, claims, approvals' },
     { name: 'White Gloves', slug: 'white-gloves', description: 'Executive and VIP support' }
   ];
 
-  const teamRecords = [] as { id: string; slug: string }[];
+  const teamRecords = [] as { id: string; slug: string; name: string }[];
   for (const team of teams) {
     const record = await prisma.team.upsert({
       where: { slug: team.slug },
       update: { name: team.name, description: team.description },
       create: team
     });
-    teamRecords.push({ id: record.id, slug: record.slug });
+    teamRecords.push({ id: record.id, slug: record.slug, name: record.name });
   }
 
   const categorySeeds = [
@@ -112,7 +138,7 @@ async function seedDev() {
 
   const itTeam = teamRecords.find((team) => team.slug === 'it-service-desk');
   const hrTeam = teamRecords.find((team) => team.slug === 'hr-operations');
-  const aiTeam = teamRecords.find((team) => team.slug === 'ai-enablement');
+  const aiTeam = teamRecords.find((team) => team.slug === 'ai');
   const medicaidTeam = teamRecords.find((team) => team.slug === 'medicaid-pending');
   const vipTeam = teamRecords.find((team) => team.slug === 'white-gloves');
 
@@ -158,67 +184,316 @@ async function seedDev() {
     skipDuplicates: true
   });
 
-  const tickets = [
+  const now = new Date();
+  const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 60 * 60 * 1000);
+  const seedPrefix = '[Seed]';
+
+  const existingSeed = await prisma.ticket.count({
+    where: { subject: { startsWith: seedPrefix } }
+  });
+
+  const teamNameById = new Map(teamRecords.map((team) => [team.id, team.name]));
+
+  if (existingSeed > 0) {
+    const missingDisplayId = await prisma.ticket.findMany({
+      where: { displayId: null },
+      include: { assignedTeam: true }
+    });
+    for (const ticket of missingDisplayId) {
+      const displayId = buildDisplayId(ticket.assignedTeam?.name ?? null, ticket.createdAt, ticket.number);
+      await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { displayId }
+      });
+    }
+    return;
+  }
+
+  const accessCategory = categoryRecords.find((category) => category.slug === 'access-identity');
+  const hardwareCategory = categoryRecords.find((category) => category.slug === 'hardware-devices');
+  const hrOpsCategory = categoryRecords.find((category) => category.slug === 'hr-ops');
+
+  const seedTickets: {
+    subject: string;
+    description: string;
+    priority: TicketPriority;
+    status: TicketStatus;
+    channel: TicketChannel;
+    requesterId: string;
+    assignedTeamId: string | null;
+    assigneeId?: string | null;
+    categoryId?: string | null;
+    createdAt: Date;
+    messages: { authorId: string; body: string; createdAt: Date }[];
+    statusHistory?: { from: TicketStatus; to: TicketStatus; at: Date }[];
+  }[] = [
     {
-      subject: 'VPN access for new contractor',
+      subject: `${seedPrefix} VPN access for new contractor`,
       description: 'Need VPN access for contractor starting Monday. Please provision and confirm MFA setup.',
       priority: TicketPriority.P2,
-      status: TicketStatus.TRIAGED,
+      status: TicketStatus.IN_PROGRESS,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
       assignedTeamId: itTeam.id,
-      assigneeId: alex.id
+      assigneeId: alex.id,
+      categoryId: accessCategory?.id ?? null,
+      createdAt: hoursAgo(120),
+      messages: [
+        { authorId: jane.id, body: 'Request submitted for VPN + MFA.', createdAt: hoursAgo(119) },
+        { authorId: alex.id, body: 'Working on provisioning. Will confirm shortly.', createdAt: hoursAgo(96) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(118) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(110) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(100) }
+      ]
     },
     {
-      subject: 'Update AI model access policy',
+      subject: `${seedPrefix} Update AI model access policy`,
       description: 'Review and update the approval workflow for external model usage.',
       priority: TicketPriority.P3,
-      status: TicketStatus.IN_PROGRESS,
+      status: TicketStatus.WAITING_ON_VENDOR,
       channel: TicketChannel.PORTAL,
       requesterId: sam.id,
       assignedTeamId: aiTeam.id,
-      assigneeId: sam.id
+      assigneeId: sam.id,
+      categoryId: accessCategory?.id ?? null,
+      createdAt: hoursAgo(90),
+      messages: [
+        { authorId: sam.id, body: 'Drafted policy updates, awaiting vendor response.', createdAt: hoursAgo(80) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(88) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(86) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(82) },
+        { from: TicketStatus.IN_PROGRESS, to: TicketStatus.WAITING_ON_VENDOR, at: hoursAgo(78) }
+      ]
     },
     {
-      subject: 'Medicaid pending claim follow-up',
+      subject: `${seedPrefix} Medicaid pending claim follow-up`,
       description: 'Claim #MP-44821 requires an eligibility verification update.',
       priority: TicketPriority.P1,
       status: TicketStatus.ASSIGNED,
       channel: TicketChannel.EMAIL,
       requesterId: jane.id,
-      assignedTeamId: medicaidTeam.id
+      assignedTeamId: medicaidTeam.id,
+      assigneeId: null,
+      categoryId: accessCategory?.id ?? null,
+      createdAt: hoursAgo(72),
+      messages: [
+        { authorId: jane.id, body: 'Need confirmation on eligibility verification for claim.', createdAt: hoursAgo(71) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(70) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(68) }
+      ]
     },
     {
-      subject: 'Executive laptop replacement',
+      subject: `${seedPrefix} Executive laptop replacement`,
       description: 'White glove request: replace executive laptop before travel.',
       priority: TicketPriority.P2,
       status: TicketStatus.NEW,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
-      assignedTeamId: vipTeam.id
+      assignedTeamId: vipTeam.id,
+      assigneeId: null,
+      categoryId: hardwareCategory?.id ?? null,
+      createdAt: hoursAgo(24),
+      messages: [
+        { authorId: jane.id, body: 'Executive laptop needs replacement before travel.', createdAt: hoursAgo(23) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} Onboarding access checklist`,
+      description: 'New hire onboarding checklist requires approvals.',
+      priority: TicketPriority.P3,
+      status: TicketStatus.TRIAGED,
+      channel: TicketChannel.PORTAL,
+      requesterId: jane.id,
+      assignedTeamId: hrTeam.id,
+      assigneeId: null,
+      categoryId: hrOpsCategory?.id ?? null,
+      createdAt: hoursAgo(40),
+      messages: [
+        { authorId: jane.id, body: 'Submitted onboarding checklist for approvals.', createdAt: hoursAgo(39) }
+      ],
+      statusHistory: [{ from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(38) }]
+    },
+    {
+      subject: `${seedPrefix} Payroll access revocation`,
+      description: 'Please revoke payroll access for departing contractor.',
+      priority: TicketPriority.P4,
+      status: TicketStatus.WAITING_ON_REQUESTER,
+      channel: TicketChannel.EMAIL,
+      requesterId: jane.id,
+      assignedTeamId: hrTeam.id,
+      assigneeId: maria.id,
+      categoryId: hrOpsCategory?.id ?? null,
+      createdAt: hoursAgo(60),
+      messages: [
+        { authorId: jane.id, body: 'Revocation request for contractor.', createdAt: hoursAgo(59) },
+        { authorId: maria.id, body: 'Need contractor end date to proceed.', createdAt: hoursAgo(55) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(58) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(57) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.WAITING_ON_REQUESTER, at: hoursAgo(54) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} Wireless headset procurement`,
+      description: 'Requesting a new wireless headset for support calls.',
+      priority: TicketPriority.P4,
+      status: TicketStatus.RESOLVED,
+      channel: TicketChannel.PORTAL,
+      requesterId: jane.id,
+      assignedTeamId: itTeam.id,
+      assigneeId: alex.id,
+      categoryId: hardwareCategory?.id ?? null,
+      createdAt: hoursAgo(96),
+      messages: [
+        { authorId: jane.id, body: 'Need headset for remote support calls.', createdAt: hoursAgo(95) },
+        { authorId: alex.id, body: 'Ordered headset and updated ticket.', createdAt: hoursAgo(30) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(92) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(90) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(80) },
+        { from: TicketStatus.IN_PROGRESS, to: TicketStatus.RESOLVED, at: hoursAgo(28) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} VPN access — re-opened`,
+      description: 'VPN access issue resurfaced after resolution.',
+      priority: TicketPriority.P2,
+      status: TicketStatus.REOPENED,
+      channel: TicketChannel.PORTAL,
+      requesterId: jane.id,
+      assignedTeamId: itTeam.id,
+      assigneeId: alex.id,
+      categoryId: accessCategory?.id ?? null,
+      createdAt: hoursAgo(140),
+      messages: [
+        { authorId: jane.id, body: 'VPN issue fixed but resurfaced today.', createdAt: hoursAgo(5) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(138) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(136) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(130) },
+        { from: TicketStatus.IN_PROGRESS, to: TicketStatus.RESOLVED, at: hoursAgo(20) },
+        { from: TicketStatus.RESOLVED, to: TicketStatus.REOPENED, at: hoursAgo(4) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} Account deprovisioning completed`,
+      description: 'Completed account deprovisioning for contractor.',
+      priority: TicketPriority.P3,
+      status: TicketStatus.CLOSED,
+      channel: TicketChannel.EMAIL,
+      requesterId: jane.id,
+      assignedTeamId: itTeam.id,
+      assigneeId: alex.id,
+      categoryId: accessCategory?.id ?? null,
+      createdAt: hoursAgo(200),
+      messages: [
+        { authorId: jane.id, body: 'Please deprovision account by end of day.', createdAt: hoursAgo(199) },
+        { authorId: alex.id, body: 'Completed and verified. Closing ticket.', createdAt: hoursAgo(10) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(198) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(195) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(180) },
+        { from: TicketStatus.IN_PROGRESS, to: TicketStatus.RESOLVED, at: hoursAgo(12) },
+        { from: TicketStatus.RESOLVED, to: TicketStatus.CLOSED, at: hoursAgo(8) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} Unassigned intake for triage`,
+      description: 'Unassigned intake ticket pending triage.',
+      priority: TicketPriority.P3,
+      status: TicketStatus.NEW,
+      channel: TicketChannel.PORTAL,
+      requesterId: jane.id,
+      assignedTeamId: null,
+      assigneeId: null,
+      categoryId: null,
+      createdAt: hoursAgo(12),
+      messages: [
+        { authorId: jane.id, body: 'Submitted ticket awaiting triage.', createdAt: hoursAgo(11) }
+      ]
     }
   ];
 
-  for (const ticket of tickets) {
-    const createdTicket = await prisma.ticket.create({
-      data: ticket
-    });
+  for (const ticket of seedTickets) {
+    const statusHistory = ticket.statusHistory ?? [];
+    const historyDates = statusHistory.map((entry) => entry.at);
+    const messageDates = ticket.messages.map((message) => message.createdAt);
+    const lastActivity = new Date(
+      Math.max(ticket.createdAt.getTime(), ...historyDates.map((d) => d.getTime()), ...messageDates.map((d) => d.getTime()))
+    );
 
-    await prisma.ticketMessage.create({
+    const resolvedEvent = statusHistory.find((entry) => entry.to === TicketStatus.RESOLVED);
+    const closedEvent = statusHistory.find((entry) => entry.to === TicketStatus.CLOSED);
+    const completedEvent = closedEvent ?? resolvedEvent;
+
+    const createdTicket = await prisma.ticket.create({
       data: {
-        ticketId: createdTicket.id,
-        authorId: ticket.requesterId,
-        type: MessageType.PUBLIC,
-        body: 'Initial request submitted through the portal.'
+        subject: ticket.subject,
+        description: ticket.description,
+        priority: ticket.priority,
+        status: ticket.status,
+        channel: ticket.channel,
+        requesterId: ticket.requesterId,
+        assignedTeamId: ticket.assignedTeamId,
+        assigneeId: ticket.assigneeId ?? null,
+        categoryId: ticket.categoryId ?? null,
+        createdAt: ticket.createdAt,
+        updatedAt: lastActivity,
+        resolvedAt: resolvedEvent?.at ?? null,
+        closedAt: closedEvent?.at ?? null,
+        completedAt: completedEvent?.at ?? null
       }
+    });
+    const displayId = buildDisplayId(
+      ticket.assignedTeamId ? (teamNameById.get(ticket.assignedTeamId) ?? null) : null,
+      createdTicket.createdAt,
+      createdTicket.number
+    );
+    await prisma.ticket.update({
+      where: { id: createdTicket.id },
+      data: { displayId }
     });
 
     await prisma.ticketEvent.create({
       data: {
         ticketId: createdTicket.id,
         type: 'TICKET_CREATED',
-        payload: { subject: ticket.subject, priority: ticket.priority }
+        payload: { subject: ticket.subject, priority: ticket.priority },
+        createdAt: ticket.createdAt,
+        createdById: ticket.requesterId
       }
+    });
+
+    if (statusHistory.length > 0) {
+      await prisma.ticketEvent.createMany({
+        data: statusHistory.map((entry) => ({
+          ticketId: createdTicket.id,
+          type: 'TICKET_STATUS_CHANGED',
+          payload: { from: entry.from, to: entry.to },
+          createdAt: entry.at,
+          createdById: ticket.assigneeId ?? ticket.requesterId
+        }))
+      });
+    }
+
+    await prisma.ticketMessage.createMany({
+      data: ticket.messages.map((message) => ({
+        ticketId: createdTicket.id,
+        authorId: message.authorId,
+        type: MessageType.PUBLIC,
+        body: message.body,
+        createdAt: message.createdAt
+      }))
     });
   }
 }
@@ -249,6 +524,10 @@ async function seedTest() {
       { id: ids.teamHr, name: 'HR Operations', slug: 'hr-operations', description: 'HR ops' }
     ]
   });
+  const teamNameById = new Map<string, string>([
+    [ids.teamIt, 'IT Service Desk'],
+    [ids.teamHr, 'HR Operations']
+  ]);
 
   await prisma.category.createMany({
     data: [
@@ -321,6 +600,10 @@ async function seedTest() {
       assigneeId: ids.agent
     }
   });
+  await prisma.ticket.update({
+    where: { id: ticketAssigned.id },
+    data: { displayId: buildDisplayId(teamNameById.get(ids.teamIt) ?? null, ticketAssigned.createdAt, ticketAssigned.number) }
+  });
 
   const ticketUnassigned = await prisma.ticket.create({
     data: {
@@ -333,8 +616,12 @@ async function seedTest() {
       assignedTeamId: ids.teamIt
     }
   });
+  await prisma.ticket.update({
+    where: { id: ticketUnassigned.id },
+    data: { displayId: buildDisplayId(teamNameById.get(ids.teamIt) ?? null, ticketUnassigned.createdAt, ticketUnassigned.number) }
+  });
 
-  await prisma.ticket.create({
+  const ticketHr = await prisma.ticket.create({
     data: {
       subject: 'HR onboarding',
       description: 'New hire onboarding package',
@@ -345,8 +632,12 @@ async function seedTest() {
       assignedTeamId: ids.teamHr
     }
   });
+  await prisma.ticket.update({
+    where: { id: ticketHr.id },
+    data: { displayId: buildDisplayId(teamNameById.get(ids.teamHr) ?? null, ticketHr.createdAt, ticketHr.number) }
+  });
 
-  await prisma.ticket.create({
+  const ticketBenefits = await prisma.ticket.create({
     data: {
       subject: 'Benefits update',
       description: 'Update medical coverage information.',
@@ -356,6 +647,10 @@ async function seedTest() {
       requesterId: ids.otherRequester,
       assignedTeamId: ids.teamHr
     }
+  });
+  await prisma.ticket.update({
+    where: { id: ticketBenefits.id },
+    data: { displayId: buildDisplayId(teamNameById.get(ids.teamHr) ?? null, ticketBenefits.createdAt, ticketBenefits.number) }
   });
 
   await prisma.ticketMessage.createMany({
