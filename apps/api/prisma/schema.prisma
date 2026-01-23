@@ -1,0 +1,195 @@
+// Prisma schema for Ticketing System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TicketStatus {
+  NEW
+  TRIAGED
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_ON_REQUESTER
+  WAITING_ON_VENDOR
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+enum TicketPriority {
+  P1
+  P2
+  P3
+  P4
+}
+
+enum TicketChannel {
+  PORTAL
+  EMAIL
+}
+
+enum MessageType {
+  PUBLIC
+  INTERNAL
+}
+
+enum TeamRole {
+  AGENT
+  LEAD
+  ADMIN
+}
+
+enum UserRole {
+  EMPLOYEE
+  AGENT
+  LEAD
+  ADMIN
+}
+
+enum AccessLevel {
+  READ
+  WRITE
+}
+
+model User {
+  id                 String        @id @default(uuid())
+  email              String        @unique
+  displayName        String
+  department         String?
+  location           String?
+  role               UserRole      @default(EMPLOYEE)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  teamMemberships    TeamMember[]
+  requestedTickets   Ticket[]      @relation("TicketRequester")
+  assignedTickets    Ticket[]      @relation("TicketAssignee")
+  messages           TicketMessage[]
+  events             TicketEvent[]
+}
+
+model Team {
+  id          String       @id @default(uuid())
+  name        String
+  slug        String       @unique
+  description String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  members     TeamMember[]
+  tickets     Ticket[]
+  ticketAccess TicketAccess[]
+  routingRules RoutingRule[]
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String
+  slug        String     @unique
+  description String?
+  isActive    Boolean    @default(true)
+  parentId    String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  parent      Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryParent")
+  tickets     Ticket[]
+}
+
+model TeamMember {
+  id        String    @id @default(uuid())
+  teamId    String
+  userId    String
+  role      TeamRole  @default(AGENT)
+  createdAt DateTime  @default(now())
+
+  team      Team      @relation(fields: [teamId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+}
+
+model Ticket {
+  id             String         @id @default(uuid())
+  number         Int            @unique @default(autoincrement())
+  subject        String
+  description    String
+  status         TicketStatus   @default(NEW)
+  priority       TicketPriority @default(P3)
+  channel        TicketChannel  @default(PORTAL)
+  requesterId    String
+  assignedTeamId String?
+  assigneeId     String?
+  categoryId     String?
+  dueAt          DateTime?
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  requester      User           @relation("TicketRequester", fields: [requesterId], references: [id])
+  assignedTeam   Team?          @relation(fields: [assignedTeamId], references: [id])
+  assignee       User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  category       Category?      @relation(fields: [categoryId], references: [id])
+  messages       TicketMessage[]
+  events         TicketEvent[]
+  accessGrants   TicketAccess[]
+}
+
+model TicketMessage {
+  id        String      @id @default(uuid())
+  ticketId  String
+  authorId  String
+  type      MessageType @default(PUBLIC)
+  body      String
+  createdAt DateTime    @default(now())
+
+  ticket    Ticket      @relation(fields: [ticketId], references: [id])
+  author    User        @relation(fields: [authorId], references: [id])
+}
+
+model TicketEvent {
+  id          String   @id @default(uuid())
+  ticketId    String
+  type        String
+  payload     Json?
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  ticket      Ticket   @relation(fields: [ticketId], references: [id])
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+}
+
+model TicketAccess {
+  id          String      @id @default(uuid())
+  ticketId    String
+  teamId      String
+  accessLevel AccessLevel @default(READ)
+  createdAt   DateTime    @default(now())
+
+  ticket      Ticket      @relation(fields: [ticketId], references: [id])
+  team        Team        @relation(fields: [teamId], references: [id])
+
+  @@unique([ticketId, teamId])
+}
+
+model RoutingRule {
+  id        String   @id @default(uuid())
+  name      String
+  keywords  String[]
+  teamId    String
+  priority  Int      @default(100)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team      Team     @relation(fields: [teamId], references: [id])
+}

@@ -1,0 +1,29 @@
+{
+  "name": "codex_ticketing-system",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently -n api,web \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "format": "npm run format -w apps/api && npm run format -w apps/web",
+    "test:db:reset": "npm run test:db:reset -w apps/api",
+    "test": "npm run test:db:reset && npm run test:integration -w apps/api",
+    "test:watch": "npm run test:watch -w apps/api"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "cypress": "^15.9.0"
+  }
+}

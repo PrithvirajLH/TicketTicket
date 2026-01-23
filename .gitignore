@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.test
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+**/test/
+**/*.spec.ts
+**/*.test.ts
+**/*.e2e-spec.ts
+jest.config.*
+jest-e2e.json
+jest.integration.json
+
+# Scripts (dev/test utilities)
+**/scripts/
+
+# Prisma
+prisma/migrations/*.sql.bak
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+.env.bak
+
+# OS files
+Thumbs.db
+
+# Docker (optional for cloud deployments)
+docker-compose.yml

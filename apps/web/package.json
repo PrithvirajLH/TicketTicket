@@ -1,0 +1,23 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "echo \"No lint configured\"",
+    "format": "echo \"No format configured\""
+  },
+  "dependencies": {
+    "lucide-react": "^0.473.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  }
+}
