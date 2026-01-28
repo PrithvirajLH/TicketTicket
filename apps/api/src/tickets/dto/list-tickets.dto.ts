@@ -1,10 +1,18 @@
 import { TicketPriority, TicketStatus } from '@prisma/client';
-import { IsEnum, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { PaginationDto } from '../../common/pagination.dto';
 
 const STATUS_GROUPS = ['open', 'resolved', 'all'] as const;
 const SORT_FIELDS = ['createdAt', 'completedAt', 'updatedAt'] as const;
 const SORT_ORDER = ['asc', 'desc'] as const;
+const SCOPES = ['all', 'assigned', 'unassigned', 'created'] as const;
 
 export class ListTicketsDto extends PaginationDto {
   @IsOptional()
@@ -14,6 +22,10 @@ export class ListTicketsDto extends PaginationDto {
   @IsOptional()
   @IsIn(STATUS_GROUPS)
   statusGroup?: (typeof STATUS_GROUPS)[number];
+
+  @IsOptional()
+  @IsIn(SCOPES)
+  scope?: (typeof SCOPES)[number];
 
   @IsOptional()
   @IsEnum(TicketPriority)

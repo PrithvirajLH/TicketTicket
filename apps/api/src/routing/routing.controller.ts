@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { CreateRoutingRuleDto } from './dto/create-routing-rule.dto';
@@ -15,7 +23,10 @@ export class RoutingRulesController {
   }
 
   @Post()
-  async create(@Body() payload: CreateRoutingRuleDto, @CurrentUser() user: AuthUser) {
+  async create(
+    @Body() payload: CreateRoutingRuleDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.routingRulesService.create(payload, user);
   }
 
@@ -23,7 +34,7 @@ export class RoutingRulesController {
   async update(
     @Param('id') id: string,
     @Body() payload: UpdateRoutingRuleDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.routingRulesService.update(id, payload, user);
   }

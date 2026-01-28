@@ -38,6 +38,12 @@ coverage/
 jest.config.*
 jest-e2e.json
 jest.integration.json
+playwright-report/
+test-results/
+
+# Keep Playwright specs
+!e2e/
+!e2e/**/*.spec.ts
 
 # Scripts (dev/test utilities)
 **/scripts/

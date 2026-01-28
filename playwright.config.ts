@@ -1,0 +1,61 @@
+import { defineConfig } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+
+type EnvMap = Record<string, string>;
+
+function loadEnvFile(filePath: string): EnvMap {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+  const env: EnvMap = {};
+  const contents = fs.readFileSync(filePath, 'utf8');
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+    const idx = line.indexOf('=');
+    if (idx === -1) {
+      continue;
+    }
+    const key = line.slice(0, idx).trim();
+    let value = line.slice(idx + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+const testEnvPath = path.resolve(__dirname, 'apps', 'api', '.env.test');
+const testEnv = loadEnvFile(testEnvPath);
+const serverEnv = {
+  ...process.env,
+  ...testEnv,
+  NODE_ENV: 'test',
+  SEED_MODE: 'test',
+  VITE_E2E_MODE: 'true'
+};
+
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 60_000,
+  workers: 1,
+  retries: process.env.CI ? 1 : 0,
+  use: {
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure'
+  },
+  webServer: {
+    command: 'node apps/api/scripts/reset-test-db.cjs && npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+    env: serverEnv
+  }
+});

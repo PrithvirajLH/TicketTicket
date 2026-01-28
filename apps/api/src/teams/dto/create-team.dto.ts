@@ -1,4 +1,5 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { TeamAssignmentStrategy } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateTeamDto {
   @IsString()
@@ -14,4 +15,8 @@ export class CreateTeamDto {
   @IsString()
   @MaxLength(200)
   description?: string;
+
+  @IsOptional()
+  @IsEnum(TeamAssignmentStrategy)
+  assignmentStrategy?: TeamAssignmentStrategy;
 }

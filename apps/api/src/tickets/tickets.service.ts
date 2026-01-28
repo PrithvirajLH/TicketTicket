@@ -1,10 +1,26 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
 } from '@nestjs/common';
-import { AccessLevel, Prisma, TicketStatus, UserRole } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import {
+  AccessLevel,
+  AttachmentScanStatus,
+  MessageType,
+  Prisma,
+  TeamAssignmentStrategy,
+  TicketPriority,
+  TicketStatus,
+  UserRole,
+} from '@prisma/client';
+import { randomUUID } from 'crypto';
+import type { Express } from 'express';
+import { createReadStream, promises as fs } from 'fs';
+import path from 'path';
 import { AuthUser } from '../auth/current-user.decorator';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
@@ -15,7 +31,21 @@ import { TransferTicketDto } from './dto/transfer-ticket.dto';
 
 @Injectable()
 export class TicketsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private defaultSlaConfig: Record<
+    TicketPriority,
+    { firstResponseHours: number; resolutionHours: number }
+  > = {
+    [TicketPriority.P1]: { firstResponseHours: 1, resolutionHours: 4 },
+    [TicketPriority.P2]: { firstResponseHours: 4, resolutionHours: 24 },
+    [TicketPriority.P3]: { firstResponseHours: 8, resolutionHours: 72 },
+    [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
+  };
 
   async list(query: ListTicketsDto, user: AuthUser) {
     const page = query.page ?? 1;
@@ -28,14 +58,26 @@ export class TicketsService {
       filters.push({ status: query.status });
     } else if (query.statusGroup && query.statusGroup !== 'all') {
       if (query.statusGroup === 'open') {
-        filters.push({ status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } });
+        filters.push({
+          status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+        });
       } else if (query.statusGroup === 'resolved') {
-        filters.push({ status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] } });
+        filters.push({
+          status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+        });
       }
     }
 
     if (query.priority) {
       filters.push({ priority: query.priority });
+    }
+
+    if (query.scope === 'assigned') {
+      filters.push({ assigneeId: user.id });
+    } else if (query.scope === 'unassigned') {
+      filters.push({ assigneeId: null });
+    } else if (query.scope === 'created') {
+      filters.push({ requesterId: user.id });
     }
 
     if (query.teamId) {
@@ -54,18 +96,20 @@ export class TicketsService {
       filters.push({
         OR: [
           { subject: { contains: query.q, mode: 'insensitive' } },
-          { description: { contains: query.q, mode: 'insensitive' } }
-        ]
+          { description: { contains: query.q, mode: 'insensitive' } },
+        ],
       });
     }
 
     filters.push(this.buildAccessFilter(user));
 
-    const where = filters.length > 1 ? { AND: filters } : filters[0] ?? {};
+    const where = filters.length > 1 ? { AND: filters } : (filters[0] ?? {});
 
     const orderByField = query.sort ?? 'updatedAt';
     const orderByDirection = query.order ?? 'desc';
-    const orderBy = { [orderByField]: orderByDirection } as Prisma.TicketOrderByWithRelationInput;
+    const orderBy = {
+      [orderByField]: orderByDirection,
+    } as Prisma.TicketOrderByWithRelationInput;
 
     const [total, data] = await Promise.all([
       this.prisma.ticket.count({ where }),
@@ -78,9 +122,9 @@ export class TicketsService {
           requester: true,
           assignee: true,
           assignedTeam: true,
-          category: true
-        }
-      })
+          category: true,
+        },
+      }),
     ]);
 
     return {
@@ -89,8 +133,8 @@ export class TicketsService {
         page,
         pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize)
-      }
+        totalPages: Math.ceil(total / pageSize),
+      },
     };
   }
 
@@ -103,12 +147,24 @@ export class TicketsService {
         assignedTeam: true,
         category: true,
         accessGrants: true,
-        messages: {
+        followers: {
+          include: { user: true },
           orderBy: { createdAt: 'asc' },
-          include: { author: true }
         },
-        events: { orderBy: { createdAt: 'asc' }, include: { createdBy: true } }
-      }
+        attachments: {
+          include: { uploadedBy: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        messages: {
+          where:
+            user.role === UserRole.EMPLOYEE
+              ? { type: MessageType.PUBLIC }
+            : undefined,
+          orderBy: { createdAt: 'asc' },
+          include: { author: true },
+        },
+        events: { orderBy: { createdAt: 'asc' }, include: { createdBy: true } },
+      },
     });
 
     if (!ticket) {
@@ -126,11 +182,18 @@ export class TicketsService {
     const requesterId = payload.requesterId ?? user.id;
 
     if (user.role === UserRole.EMPLOYEE && requesterId !== user.id) {
-      throw new ForbiddenException('Requesters can only create their own tickets');
+      throw new ForbiddenException(
+        'Requesters can only create their own tickets',
+      );
     }
 
     const routedTeamId =
-      payload.assignedTeamId ?? (await this.routeTeam(payload.subject, payload.description));
+      payload.assignedTeamId ??
+      (await this.routeTeam(payload.subject, payload.description));
+    const autoAssigneeId = payload.assigneeId
+      ? null
+      : await this.resolveAssignee(routedTeamId);
+    const assigneeId = payload.assigneeId ?? autoAssigneeId;
 
     const ticket = await this.prisma.ticket.create({
       data: {
@@ -140,28 +203,44 @@ export class TicketsService {
         channel: payload.channel,
         requesterId,
         assignedTeamId: routedTeamId,
-        assigneeId: payload.assigneeId,
+        assigneeId,
         categoryId: payload.categoryId,
-        status: TicketStatus.NEW
+        status: TicketStatus.NEW,
       },
       include: {
         requester: true,
         assignee: true,
-        assignedTeam: true
-      }
+        assignedTeam: true,
+      },
     });
 
-    const displayId = this.buildDisplayId(ticket.assignedTeam?.name ?? null, ticket.createdAt, ticket.number);
+    const displayId = this.buildDisplayId(
+      ticket.assignedTeam?.name ?? null,
+      ticket.createdAt,
+      ticket.number,
+    );
+    const sla = await this.getSlaConfig(ticket.priority, ticket.assignedTeamId);
+    const firstResponseDueAt = sla
+      ? this.addHours(ticket.createdAt, sla.firstResponseHours)
+      : null;
+    const resolutionDueAt = sla
+      ? this.addHours(ticket.createdAt, sla.resolutionHours)
+      : null;
     const updatedTicket = await this.prisma.ticket.update({
       where: { id: ticket.id },
-      data: { displayId },
+      data: { displayId, firstResponseDueAt, dueAt: resolutionDueAt },
       include: {
         requester: true,
         assignee: true,
         assignedTeam: true,
-        category: true
-      }
+        category: true,
+      },
     });
+
+    await this.ensureFollower(ticket.id, requesterId);
+    if (ticket.assigneeId) {
+      await this.ensureFollower(ticket.id, ticket.assigneeId);
+    }
 
     await this.prisma.ticketEvent.create({
       data: {
@@ -170,21 +249,53 @@ export class TicketsService {
         payload: {
           subject: ticket.subject,
           priority: ticket.priority,
-          channel: ticket.channel
+          channel: ticket.channel,
         },
-        createdById: payload.requesterId
-      }
+        createdById: payload.requesterId,
+      },
     });
+
+    if (autoAssigneeId && routedTeamId) {
+      try {
+        await this.prisma.team.update({
+          where: { id: routedTeamId },
+          data: { lastAssignedUserId: autoAssigneeId },
+        });
+      } catch (error) {
+        console.error('Failed to update round-robin state', error);
+      }
+    }
+
+    if (assigneeId) {
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'TICKET_ASSIGNED',
+          payload: { assigneeId },
+          createdById: user.id,
+        },
+      });
+    }
+
+    await this.safeNotify(() =>
+      this.notifications.ticketCreated(updatedTicket, user),
+    );
 
     return updatedTicket;
   }
 
-  async addMessage(ticketId: string, payload: AddTicketMessageDto, user: AuthUser) {
+  async addMessage(
+    ticketId: string,
+    payload: AddTicketMessageDto,
+    user: AuthUser,
+  ) {
     if (payload.authorId && payload.authorId !== user.id) {
       throw new ForbiddenException('Message author must match current user');
     }
 
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
 
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
@@ -192,7 +303,9 @@ export class TicketsService {
 
     if (user.role === UserRole.EMPLOYEE) {
       if (ticket.requesterId !== user.id) {
-        throw new ForbiddenException('Requesters can only reply to their own tickets');
+        throw new ForbiddenException(
+          'Requesters can only reply to their own tickets',
+        );
       }
       if (payload.type && payload.type !== 'PUBLIC') {
         throw new ForbiddenException('Requesters can only add public replies');
@@ -203,17 +316,32 @@ export class TicketsService {
       throw new ForbiddenException('No write access to this ticket');
     }
 
+    const shouldSetFirstResponse =
+      user.role !== UserRole.EMPLOYEE &&
+      ticket.firstResponseAt === null &&
+      (payload.type ?? MessageType.PUBLIC) === MessageType.PUBLIC;
+
+    const now = new Date();
+
     const message = await this.prisma.ticketMessage.create({
       data: {
         ticketId,
         authorId: user.id,
         body: payload.body,
-        type: payload.type
+        type: payload.type,
+        createdAt: now,
       },
       include: {
-        author: true
-      }
+        author: true,
+      },
     });
+
+    if (shouldSetFirstResponse) {
+      await this.prisma.ticket.update({
+        where: { id: ticketId },
+        data: { firstResponseAt: now },
+      });
+    }
 
     await this.prisma.ticketEvent.create({
       data: {
@@ -221,11 +349,16 @@ export class TicketsService {
         type: 'MESSAGE_ADDED',
         payload: {
           messageId: message.id,
-          type: message.type
+          type: message.type,
         },
-        createdById: payload.authorId
-      }
+        createdById: payload.authorId,
+      },
     });
+
+    await this.ensureFollower(ticketId, user.id);
+    await this.safeNotify(() =>
+      this.notifications.messageAdded(ticketId, message, user),
+    );
 
     return message;
   }
@@ -233,7 +366,7 @@ export class TicketsService {
   async assign(ticketId: string, payload: AssignTicketDto, user: AuthUser) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
-      include: { assignedTeam: true }
+      include: { assignedTeam: true },
     });
 
     if (!ticket) {
@@ -245,17 +378,27 @@ export class TicketsService {
     }
 
     const assigneeId = payload.assigneeId ?? user.id;
+    const assignStatusPromote: TicketStatus[] = [
+      TicketStatus.NEW,
+      TicketStatus.TRIAGED,
+      TicketStatus.REOPENED,
+    ];
+    const shouldSetAssignedStatus = assignStatusPromote.includes(ticket.status);
+    const nextStatus = shouldSetAssignedStatus
+      ? TicketStatus.ASSIGNED
+      : ticket.status;
 
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: {
-        assigneeId
+        assigneeId,
+        status: nextStatus,
       },
       include: {
         requester: true,
         assignee: true,
-        assignedTeam: true
-      }
+        assignedTeam: true,
+      },
     });
 
     await this.prisma.ticketEvent.create({
@@ -263,15 +406,36 @@ export class TicketsService {
         ticketId: ticket.id,
         type: 'TICKET_ASSIGNED',
         payload: { assigneeId },
-        createdById: user.id
-      }
+        createdById: user.id,
+      },
     });
+
+    if (nextStatus !== ticket.status) {
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'TICKET_STATUS_CHANGED',
+          payload: {
+            from: ticket.status,
+            to: nextStatus,
+          },
+          createdById: user.id,
+        },
+      });
+    }
+
+    await this.ensureFollower(ticketId, assigneeId);
+    await this.safeNotify(() =>
+      this.notifications.ticketAssigned(updated, user),
+    );
 
     return updated;
   }
 
   async transfer(ticketId: string, payload: TransferTicketDto, user: AuthUser) {
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
 
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
@@ -285,19 +449,46 @@ export class TicketsService {
       throw new ForbiddenException('No write access to transfer this ticket');
     }
 
+    if (ticket.assignedTeamId && ticket.assignedTeamId === payload.newTeamId) {
+      throw new BadRequestException('Ticket is already assigned to that team');
+    }
+
+    const targetTeam = await this.prisma.team.findUnique({
+      where: { id: payload.newTeamId },
+    });
+    if (!targetTeam) {
+      throw new BadRequestException('Target team not found');
+    }
+
+    if (payload.assigneeId) {
+      const membership = await this.prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: payload.newTeamId,
+            userId: payload.assigneeId,
+          },
+        },
+      });
+      if (!membership) {
+        throw new BadRequestException(
+          'Assignee must belong to the target team',
+        );
+      }
+    }
+
     const priorTeamId = ticket.assignedTeamId;
 
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: {
         assignedTeamId: payload.newTeamId,
-        assigneeId: payload.assigneeId ?? null
+        assigneeId: payload.assigneeId ?? null,
       },
       include: {
         requester: true,
         assignee: true,
-        assignedTeam: true
-      }
+        assignedTeam: true,
+      },
     });
 
     if (priorTeamId && priorTeamId !== payload.newTeamId) {
@@ -305,22 +496,22 @@ export class TicketsService {
         where: {
           ticketId_teamId: {
             ticketId,
-            teamId: priorTeamId
-          }
+            teamId: priorTeamId,
+          },
         },
         update: { accessLevel: AccessLevel.READ },
         create: {
           ticketId,
           teamId: priorTeamId,
-          accessLevel: AccessLevel.READ
-        }
+          accessLevel: AccessLevel.READ,
+        },
       });
 
       await this.prisma.ticketAccess.deleteMany({
         where: {
           ticketId,
-          teamId: payload.newTeamId
-        }
+          teamId: payload.newTeamId,
+        },
       });
     }
 
@@ -331,17 +522,30 @@ export class TicketsService {
         payload: {
           fromTeamId: priorTeamId,
           toTeamId: payload.newTeamId,
-          assigneeId: payload.assigneeId ?? null
+          assigneeId: payload.assigneeId ?? null,
         },
-        createdById: user.id
-      }
+        createdById: user.id,
+      },
     });
+
+    if (payload.assigneeId) {
+      await this.ensureFollower(ticketId, payload.assigneeId);
+    }
+    await this.safeNotify(() =>
+      this.notifications.ticketTransferred(updated, user, priorTeamId),
+    );
 
     return updated;
   }
 
-  async transition(ticketId: string, payload: TransitionTicketDto, user: AuthUser) {
-    const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+  async transition(
+    ticketId: string,
+    payload: TransitionTicketDto,
+    user: AuthUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
 
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
@@ -359,30 +563,59 @@ export class TicketsService {
       throw new ForbiddenException('Invalid status transition');
     }
 
+    const now = new Date();
+    const enteringPause =
+      this.isPauseStatus(payload.status) && !this.isPauseStatus(ticket.status);
+    const leavingPause =
+      this.isPauseStatus(ticket.status) && !this.isPauseStatus(payload.status);
+
     const resolvedAt =
-      payload.status === TicketStatus.RESOLVED ? new Date() : payload.status === TicketStatus.REOPENED ? null : ticket.resolvedAt;
-    const closedAt =
-      payload.status === TicketStatus.CLOSED ? new Date() : payload.status === TicketStatus.REOPENED ? null : ticket.closedAt;
-    const completedAt =
-      payload.status === TicketStatus.RESOLVED || payload.status === TicketStatus.CLOSED
+      payload.status === TicketStatus.RESOLVED
         ? new Date()
         : payload.status === TicketStatus.REOPENED
-        ? null
-        : ticket.completedAt ?? null;
+          ? null
+          : ticket.resolvedAt;
+    const closedAt =
+      payload.status === TicketStatus.CLOSED
+        ? new Date()
+        : payload.status === TicketStatus.REOPENED
+          ? null
+          : ticket.closedAt;
+    const completedAt =
+      payload.status === TicketStatus.RESOLVED ||
+      payload.status === TicketStatus.CLOSED
+        ? new Date()
+        : payload.status === TicketStatus.REOPENED
+          ? null
+          : (ticket.completedAt ?? null);
+
+    const updateData: Prisma.TicketUpdateInput = {
+      status: payload.status,
+      resolvedAt,
+      closedAt,
+      completedAt,
+    };
+
+    if (enteringPause) {
+      updateData.slaPausedAt = now;
+    }
+
+    if (leavingPause) {
+      if (ticket.slaPausedAt && ticket.dueAt) {
+        const pauseMs = now.getTime() - ticket.slaPausedAt.getTime();
+        updateData.dueAt = new Date(ticket.dueAt.getTime() + pauseMs);
+      }
+      updateData.slaPausedAt = null;
+    }
 
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
-      data: {
-        status: payload.status,
-        resolvedAt,
-        closedAt,
-        completedAt
-      },
+      data: updateData,
       include: {
         requester: true,
         assignee: true,
-        assignedTeam: true
-      }
+        assignedTeam: true,
+      },
     });
 
     await this.prisma.ticketEvent.create({
@@ -391,13 +624,198 @@ export class TicketsService {
         type: 'TICKET_STATUS_CHANGED',
         payload: {
           from: ticket.status,
-          to: payload.status
+          to: payload.status,
         },
-        createdById: user.id
-      }
+        createdById: user.id,
+      },
     });
 
+    await this.safeNotify(() =>
+      this.notifications.ticketStatusChanged(updated, ticket.status, user),
+    );
+
     return updated;
+  }
+
+  async listFollowers(ticketId: string, user: AuthUser) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        followers: {
+          include: { user: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    return { data: ticket.followers };
+  }
+
+  async followTicket(
+    ticketId: string,
+    payload: { userId?: string },
+    user: AuthUser,
+  ) {
+    const targetUserId = payload.userId ?? user.id;
+    const canManageFollowers =
+      user.role === UserRole.ADMIN || user.role === UserRole.LEAD;
+
+    if (targetUserId !== user.id && !canManageFollowers) {
+      throw new ForbiddenException('Not allowed to follow for others');
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    await this.ensureFollower(ticketId, targetUserId);
+
+    return this.listFollowers(ticketId, user);
+  }
+
+  async unfollowTicket(ticketId: string, userId: string, user: AuthUser) {
+    const targetUserId = userId === 'me' ? user.id : userId;
+    const canManageFollowers =
+      user.role === UserRole.ADMIN || user.role === UserRole.LEAD;
+
+    if (targetUserId !== user.id && !canManageFollowers) {
+      throw new ForbiddenException('Not allowed to remove other followers');
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    await this.prisma.ticketFollower.deleteMany({
+      where: { ticketId, userId: targetUserId },
+    });
+
+    return { id: targetUserId };
+  }
+
+  async addAttachment(
+    ticketId: string,
+    file: Express.Multer.File | undefined,
+    user: AuthUser,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Attachment file is required');
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { accessGrants: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canWriteTicket(user, ticket)) {
+      throw new ForbiddenException('No write access to this ticket');
+    }
+
+    const maxMb = Number(this.config.get<string>('ATTACHMENTS_MAX_MB') ?? '10');
+    const maxBytes = maxMb * 1024 * 1024;
+    if (Number.isFinite(maxBytes) && file.size > maxBytes) {
+      throw new BadRequestException(
+        `Attachment exceeds ${maxMb}MB limit`,
+      );
+    }
+
+    const attachmentId = randomUUID();
+    const safeName = this.sanitizeFileName(file.originalname);
+    const storageKey = path.posix.join(ticketId, `${attachmentId}-${safeName}`);
+    const filePath = this.resolveAttachmentPath(storageKey);
+
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, file.buffer);
+
+    const attachment = await this.prisma.attachment.create({
+      data: {
+        id: attachmentId,
+        ticketId,
+        uploadedById: user.id,
+        fileName: file.originalname,
+        contentType: file.mimetype,
+        sizeBytes: file.size,
+        storageKey,
+        scanStatus: AttachmentScanStatus.CLEAN,
+        scanCheckedAt: new Date(),
+      },
+      include: { uploadedBy: true },
+    });
+
+    await this.prisma.ticketEvent.create({
+      data: {
+        ticketId,
+        type: 'ATTACHMENT_ADDED',
+        payload: {
+          attachmentId: attachment.id,
+          fileName: attachment.fileName,
+          sizeBytes: attachment.sizeBytes,
+          contentType: attachment.contentType,
+        },
+        createdById: user.id,
+      },
+    });
+
+    return attachment;
+  }
+
+  async getAttachmentFile(attachmentId: string, user: AuthUser) {
+    const attachment = await this.prisma.attachment.findUnique({
+      where: { id: attachmentId },
+      include: {
+        ticket: {
+          include: { accessGrants: true },
+        },
+      },
+    });
+
+    if (!attachment) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    if (!this.canViewTicket(user, attachment.ticket)) {
+      throw new ForbiddenException('No access to this attachment');
+    }
+
+    const filePath = this.resolveAttachmentPath(attachment.storageKey);
+    try {
+      await fs.access(filePath);
+    } catch {
+      throw new NotFoundException('Attachment file missing');
+    }
+
+    return {
+      attachment,
+      stream: createReadStream(filePath),
+    };
   }
 
   private buildAccessFilter(user: AuthUser): Prisma.TicketWhereInput {
@@ -417,8 +835,8 @@ export class TicketsService {
       return {
         OR: [
           { assignedTeamId: user.teamId },
-          { accessGrants: { some: { teamId: user.teamId } } }
-        ]
+          { accessGrants: { some: { teamId: user.teamId } } },
+        ],
       };
     }
 
@@ -426,12 +844,20 @@ export class TicketsService {
       OR: [
         { assignedTeamId: user.teamId, assigneeId: user.id },
         { assignedTeamId: user.teamId, assigneeId: null },
-        { accessGrants: { some: { teamId: user.teamId } } }
-      ]
+        { accessGrants: { some: { teamId: user.teamId } } },
+      ],
     };
   }
 
-  private canViewTicket(user: AuthUser, ticket: { requesterId: string; assignedTeamId: string | null; assigneeId: string | null; accessGrants?: { teamId: string }[] }) {
+  private canViewTicket(
+    user: AuthUser,
+    ticket: {
+      requesterId: string;
+      assignedTeamId: string | null;
+      assigneeId: string | null;
+      accessGrants?: { teamId: string }[];
+    },
+  ) {
     if (user.role === UserRole.ADMIN) {
       return true;
     }
@@ -444,7 +870,9 @@ export class TicketsService {
       return ticket.requesterId === user.id;
     }
 
-    const hasReadGrant = ticket.accessGrants?.some((grant) => grant.teamId === user.teamId) ?? false;
+    const hasReadGrant =
+      ticket.accessGrants?.some((grant) => grant.teamId === user.teamId) ??
+      false;
 
     if (user.role === UserRole.LEAD) {
       return ticket.assignedTeamId === user.teamId || hasReadGrant;
@@ -457,7 +885,14 @@ export class TicketsService {
     return isAgentAccess || hasReadGrant;
   }
 
-  private canWriteTicket(user: AuthUser, ticket: { requesterId: string; assignedTeamId: string | null; assigneeId: string | null }) {
+  private canWriteTicket(
+    user: AuthUser,
+    ticket: {
+      requesterId: string;
+      assignedTeamId: string | null;
+      assigneeId: string | null;
+    },
+  ) {
     if (user.role === UserRole.ADMIN) {
       return true;
     }
@@ -483,7 +918,7 @@ export class TicketsService {
   private canAssignTicket(
     user: AuthUser,
     ticket: { assignedTeamId: string | null; assigneeId: string | null },
-    assigneeId?: string
+    assigneeId?: string,
   ) {
     if (user.role === UserRole.ADMIN) {
       return true;
@@ -506,6 +941,30 @@ export class TicketsService {
     return ticket.assigneeId === null || ticket.assigneeId === user.id;
   }
 
+  private async ensureFollower(ticketId: string, userId: string) {
+    await this.prisma.ticketFollower.upsert({
+      where: {
+        ticketId_userId: {
+          ticketId,
+          userId,
+        },
+      },
+      update: {},
+      create: {
+        ticketId,
+        userId,
+      },
+    });
+  }
+
+  private async safeNotify(task: () => Promise<void>) {
+    try {
+      await task();
+    } catch (error) {
+      console.error('Notification failed', error);
+    }
+  }
+
   private isValidTransition(from: TicketStatus, to: TicketStatus) {
     if (from === to) {
       return true;
@@ -519,7 +978,7 @@ export class TicketsService {
         TicketStatus.WAITING_ON_REQUESTER,
         TicketStatus.WAITING_ON_VENDOR,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
+        TicketStatus.CLOSED,
       ],
       [TicketStatus.TRIAGED]: [
         TicketStatus.ASSIGNED,
@@ -527,30 +986,30 @@ export class TicketsService {
         TicketStatus.WAITING_ON_REQUESTER,
         TicketStatus.WAITING_ON_VENDOR,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
+        TicketStatus.CLOSED,
       ],
       [TicketStatus.ASSIGNED]: [
         TicketStatus.IN_PROGRESS,
         TicketStatus.WAITING_ON_REQUESTER,
         TicketStatus.WAITING_ON_VENDOR,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
+        TicketStatus.CLOSED,
       ],
       [TicketStatus.IN_PROGRESS]: [
         TicketStatus.WAITING_ON_REQUESTER,
         TicketStatus.WAITING_ON_VENDOR,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
+        TicketStatus.CLOSED,
       ],
       [TicketStatus.WAITING_ON_REQUESTER]: [
         TicketStatus.IN_PROGRESS,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
+        TicketStatus.CLOSED,
       ],
       [TicketStatus.WAITING_ON_VENDOR]: [
         TicketStatus.IN_PROGRESS,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
+        TicketStatus.CLOSED,
       ],
       [TicketStatus.RESOLVED]: [TicketStatus.REOPENED, TicketStatus.CLOSED],
       [TicketStatus.CLOSED]: [TicketStatus.REOPENED],
@@ -561,14 +1020,50 @@ export class TicketsService {
         TicketStatus.WAITING_ON_REQUESTER,
         TicketStatus.WAITING_ON_VENDOR,
         TicketStatus.RESOLVED,
-        TicketStatus.CLOSED
-      ]
+        TicketStatus.CLOSED,
+      ],
     };
 
     return allowed[from].includes(to);
   }
 
-  private buildDisplayId(teamName: string | null, createdAt: Date, ticketNumber: number) {
+  private isPauseStatus(status: TicketStatus) {
+    return (
+      status === TicketStatus.WAITING_ON_REQUESTER ||
+      status === TicketStatus.WAITING_ON_VENDOR
+    );
+  }
+
+  private async getSlaConfig(priority: TicketPriority, teamId: string | null) {
+    if (teamId) {
+      const policy = await this.prisma.slaPolicy.findUnique({
+        where: {
+          teamId_priority: {
+            teamId,
+            priority,
+          },
+        },
+      });
+      if (policy) {
+        return {
+          firstResponseHours: policy.firstResponseHours,
+          resolutionHours: policy.resolutionHours,
+        };
+      }
+    }
+
+    return this.defaultSlaConfig[priority];
+  }
+
+  private addHours(date: Date, hours: number) {
+    return new Date(date.getTime() + hours * 60 * 60 * 1000);
+  }
+
+  private buildDisplayId(
+    teamName: string | null,
+    createdAt: Date,
+    ticketNumber: number,
+  ) {
     const departmentCode = this.getDepartmentCode(teamName);
     const yyyy = createdAt.getFullYear();
     const mm = String(createdAt.getMonth() + 1).padStart(2, '0');
@@ -599,11 +1094,13 @@ export class TicketsService {
     const text = `${subject} ${description}`.toLowerCase();
     const rules = await this.prisma.routingRule.findMany({
       where: { isActive: true },
-      orderBy: [{ priority: 'asc' }, { name: 'asc' }]
+      orderBy: [{ priority: 'asc' }, { name: 'asc' }],
     });
 
     for (const rule of rules) {
-      const matches = rule.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+      const matches = rule.keywords.some((keyword) =>
+        text.includes(keyword.toLowerCase()),
+      );
       if (matches) {
         return rule.teamId;
       }
@@ -611,9 +1108,18 @@ export class TicketsService {
 
     let slug: string | null = null;
 
-    if (text.includes('hr') || text.includes('onboard') || text.includes('benefits')) {
+    if (
+      text.includes('hr') ||
+      text.includes('onboard') ||
+      text.includes('benefits')
+    ) {
       slug = 'hr-operations';
-    } else if (text.includes('vpn') || text.includes('laptop') || text.includes('device') || text.includes('it ')) {
+    } else if (
+      text.includes('vpn') ||
+      text.includes('laptop') ||
+      text.includes('device') ||
+      text.includes('it ')
+    ) {
       slug = 'it-service-desk';
     }
 
@@ -623,5 +1129,52 @@ export class TicketsService {
 
     const team = await this.prisma.team.findUnique({ where: { slug } });
     return team?.id ?? null;
+  }
+
+  private async resolveAssignee(teamId: string | null) {
+    if (!teamId) {
+      return null;
+    }
+
+    const team = await this.prisma.team.findUnique({
+      where: { id: teamId },
+      include: { members: { orderBy: { createdAt: 'asc' } } },
+    });
+
+    if (!team) {
+      return null;
+    }
+
+    if (team.assignmentStrategy !== TeamAssignmentStrategy.ROUND_ROBIN) {
+      return null;
+    }
+
+    const members = team.members;
+    if (members.length === 0) {
+      return null;
+    }
+
+    let nextMember = members[0];
+    if (team.lastAssignedUserId) {
+      const currentIndex = members.findIndex(
+        (member) => member.userId === team.lastAssignedUserId,
+      );
+      if (currentIndex >= 0) {
+        nextMember = members[(currentIndex + 1) % members.length];
+      }
+    }
+
+    return nextMember.userId;
+  }
+
+  private resolveAttachmentPath(storageKey: string) {
+    const baseDir =
+      this.config.get<string>('ATTACHMENTS_DIR') ??
+      path.join(process.cwd(), 'uploads');
+    return path.join(baseDir, storageKey);
+  }
+
+  private sanitizeFileName(fileName: string) {
+    return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   }
 }

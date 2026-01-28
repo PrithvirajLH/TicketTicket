@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/current-user.decorator';
 import { UserRole } from '@prisma/client';
@@ -12,7 +16,7 @@ export class RoutingRulesService {
   async list() {
     const data = await this.prisma.routingRule.findMany({
       include: { team: true },
-      orderBy: [{ priority: 'asc' }, { name: 'asc' }]
+      orderBy: [{ priority: 'asc' }, { name: 'asc' }],
     });
 
     return { data };
@@ -29,9 +33,9 @@ export class RoutingRulesService {
         teamId: payload.teamId,
         keywords,
         priority: payload.priority ?? 100,
-        isActive: payload.isActive ?? true
+        isActive: payload.isActive ?? true,
       },
-      include: { team: true }
+      include: { team: true },
     });
   }
 
@@ -49,11 +53,13 @@ export class RoutingRulesService {
       data: {
         name: payload.name,
         teamId: payload.teamId,
-        keywords: payload.keywords ? this.normalizeKeywords(payload.keywords) : undefined,
+        keywords: payload.keywords
+          ? this.normalizeKeywords(payload.keywords)
+          : undefined,
         priority: payload.priority,
-        isActive: payload.isActive
+        isActive: payload.isActive,
       },
-      include: { team: true }
+      include: { team: true },
     });
   }
 

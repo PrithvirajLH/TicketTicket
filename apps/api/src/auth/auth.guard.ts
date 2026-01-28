@@ -2,7 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  UnauthorizedException
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,12 +11,15 @@ import { AuthRequest } from './current-user.decorator';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService, private readonly reflector: Reflector) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext) {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
-      context.getClass()
+      context.getClass(),
     ]);
 
     if (isPublic) {
@@ -35,9 +38,9 @@ export class AuthGuard implements CanActivate {
       where: {
         OR: [
           typeof userId === 'string' ? { id: userId } : undefined,
-          typeof email === 'string' ? { email } : undefined
-        ].filter(Boolean) as { id?: string; email?: string }[]
-      }
+          typeof email === 'string' ? { email } : undefined,
+        ].filter(Boolean) as { id?: string; email?: string }[],
+      },
     });
 
     if (!user) {
@@ -46,7 +49,7 @@ export class AuthGuard implements CanActivate {
 
     const membership = await this.prisma.teamMember.findFirst({
       where: { userId: user.id },
-      include: { team: true }
+      include: { team: true },
     });
 
     request.user = {
@@ -54,7 +57,7 @@ export class AuthGuard implements CanActivate {
       email: user.email,
       role: user.role,
       teamId: membership?.teamId ?? null,
-      teamRole: membership?.role ?? null
+      teamRole: membership?.role ?? null,
     };
 
     return true;

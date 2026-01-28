@@ -1,8 +1,21 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
@@ -23,7 +36,10 @@ export class TicketsController {
   }
 
   @Post()
-  async create(@Body() payload: CreateTicketDto, @CurrentUser() user: AuthUser) {
+  async create(
+    @Body() payload: CreateTicketDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.ticketsService.create(payload, user);
   }
 
@@ -31,16 +47,30 @@ export class TicketsController {
   async addMessage(
     @Param('id') id: string,
     @Body() payload: AddTicketMessageDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.addMessage(id, payload, user);
+  }
+
+  @Post(':id/attachments')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async addAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.addAttachment(id, file, user);
   }
 
   @Post(':id/assign')
   async assign(
     @Param('id') id: string,
     @Body() payload: AssignTicketDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.assign(id, payload, user);
   }
@@ -49,7 +79,7 @@ export class TicketsController {
   async transfer(
     @Param('id') id: string,
     @Body() payload: TransferTicketDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.transfer(id, payload, user);
   }
@@ -58,8 +88,31 @@ export class TicketsController {
   async transition(
     @Param('id') id: string,
     @Body() payload: TransitionTicketDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.transition(id, payload, user);
+  }
+
+  @Get(':id/followers')
+  async listFollowers(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.ticketsService.listFollowers(id, user);
+  }
+
+  @Post(':id/followers')
+  async follow(
+    @Param('id') id: string,
+    @Body() payload: FollowTicketDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.followTicket(id, payload, user);
+  }
+
+  @Delete(':id/followers/:userId')
+  async unfollow(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.unfollowTicket(id, userId, user);
   }
 }

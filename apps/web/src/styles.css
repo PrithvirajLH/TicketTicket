@@ -22,8 +22,8 @@
 }
 
 body {
-  background-image: radial-gradient(rgba(148, 163, 184, 0.25) 1px, transparent 1px);
-  background-size: 16px 16px;
+  background-image: radial-gradient(rgba(100, 116, 139, 0.35) 1px, transparent 1px);
+  background-size: 20px 20px;
   background-position: -4px -4px;
   background-attachment: fixed;
   overflow: hidden;
@@ -31,19 +31,32 @@ body {
 
 @layer utilities {
   .glass-card {
-    @apply rounded-3xl backdrop-blur-md bg-white/80 border border-slate-200/70 shadow-xl shadow-slate-900/5;
+    @apply rounded-3xl backdrop-blur-md bg-white/95 border border-slate-300 shadow-xl shadow-slate-900/10;
   }
 
   .glass-card-strong {
-    @apply rounded-3xl backdrop-blur-lg bg-white/90 border border-slate-200/60 shadow-2xl shadow-slate-900/10;
+    @apply rounded-3xl backdrop-blur-lg bg-white border border-slate-300 shadow-2xl shadow-slate-900/15;
   }
 
   .text-muted {
-    @apply text-slate-500;
+    @apply text-slate-600;
   }
 
   .animate-fade-in {
     animation: fade-in 0.45s ease-out both;
+  }
+
+  .skeleton-shimmer {
+    @apply relative overflow-hidden bg-slate-200;
+  }
+
+  .skeleton-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: shimmer 1.6s infinite;
   }
 }
 
@@ -55,5 +68,11 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
   }
 }

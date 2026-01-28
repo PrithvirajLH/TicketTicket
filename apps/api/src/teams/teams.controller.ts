@@ -1,9 +1,19 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { ListTeamsDto } from './dto/list-teams.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
 import { TeamsService } from './teams.service';
 
@@ -21,6 +31,15 @@ export class TeamsController {
     return this.teamsService.create(payload);
   }
 
+  @Patch(':id')
+  async update(
+    @Param('id') id: string,
+    @Body() payload: UpdateTeamDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.teamsService.update(id, payload, user);
+  }
+
   @Get(':id/members')
   async listMembers(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.teamsService.listMembers(id, user);
@@ -30,7 +49,7 @@ export class TeamsController {
   async addMember(
     @Param('id') id: string,
     @Body() payload: AddTeamMemberDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.teamsService.addMember(id, payload, user);
   }
@@ -40,7 +59,7 @@ export class TeamsController {
     @Param('id') id: string,
     @Param('memberId') memberId: string,
     @Body() payload: UpdateTeamMemberDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.teamsService.updateMember(id, memberId, payload, user);
   }
@@ -49,7 +68,7 @@ export class TeamsController {
   async removeMember(
     @Param('id') id: string,
     @Param('memberId') memberId: string,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.teamsService.removeMember(id, memberId, user);
   }

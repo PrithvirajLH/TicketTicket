@@ -3,6 +3,7 @@ import {
   BarChart3,
   CheckCircle,
   ClipboardList,
+  Clock,
   FileText,
   FolderKanban,
   LayoutDashboard,
@@ -17,8 +18,16 @@ import { CreateTicketModal, type CreateTicketForm } from './components/CreateTic
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { DashboardPage } from './pages/DashboardPage';
+import { ManagerViewsPage } from './pages/ManagerViewsPage';
+import { SlaSettingsPage } from './pages/SlaSettingsPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { AdminPage } from './pages/AdminPage';
+import { RoutingRulesPage } from './pages/RoutingRulesPage';
+import { CategoriesPage } from './pages/CategoriesPage';
+import { TeamPage } from './pages/TeamPage';
 import { TicketDetailPage } from './pages/TicketDetailPage';
 import { TicketsPage } from './pages/TicketsPage';
+import { TriageBoardPage } from './pages/TriageBoardPage';
 import type { Role, StatusFilter, TicketScope } from './types';
 
 type NavKey =
@@ -30,15 +39,25 @@ type NavKey =
   | 'triage'
   | 'manager'
   | 'team'
+  | 'sla-settings'
   | 'reports'
   | 'admin';
 
-const personas: { label: string; email: string; role: Role }[] = [
+const defaultPersonas: { label: string; email: string; role: Role }[] = [
   { label: 'Employee (Jane)', email: 'jane.doe@company.com', role: 'EMPLOYEE' },
   { label: 'Agent (Alex)', email: 'alex.park@company.com', role: 'AGENT' },
   { label: 'Lead (Maria)', email: 'maria.chen@company.com', role: 'LEAD' },
   { label: 'Admin (Sam)', email: 'sam.rivera@company.com', role: 'ADMIN' }
 ];
+
+const e2ePersonas: { label: string; email: string; role: Role }[] = [
+  { label: 'Requester (Test)', email: 'requester@company.com', role: 'EMPLOYEE' },
+  { label: 'Agent (Test)', email: 'agent@company.com', role: 'AGENT' },
+  { label: 'Lead (Test)', email: 'lead@company.com', role: 'LEAD' },
+  { label: 'Admin (Test)', email: 'admin@company.com', role: 'ADMIN' }
+];
+
+const personas = import.meta.env.VITE_E2E_MODE === 'true' ? e2ePersonas : defaultPersonas;
 
 const navItems: (SidebarItem & { roles: Role[] })[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'ADMIN'] },
@@ -49,6 +68,7 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
   { key: 'triage', label: 'Triage Board', icon: ClipboardList, roles: ['LEAD', 'ADMIN'] },
   { key: 'manager', label: 'Manager Views', icon: FolderKanban, roles: ['LEAD', 'ADMIN'] },
   { key: 'team', label: 'Team', icon: Users, roles: ['LEAD', 'ADMIN'] },
+  { key: 'sla-settings', label: 'SLA Settings', icon: Clock, roles: ['ADMIN'] },
   { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['ADMIN'] },
   { key: 'admin', label: 'Admin', icon: Settings, roles: ['ADMIN'] }
 ];
@@ -59,12 +79,36 @@ function deriveNavKey(
   ticketPresetStatus: StatusFilter,
   ticketPresetScope: TicketScope
 ): NavKey {
+  if (pathname.startsWith('/triage')) {
+    return 'triage';
+  }
+  if (pathname.startsWith('/manager')) {
+    return 'manager';
+  }
+  if (pathname.startsWith('/team')) {
+    return 'team';
+  }
+  if (pathname.startsWith('/sla-settings')) {
+    return 'sla-settings';
+  }
+  if (pathname.startsWith('/routing') || pathname.startsWith('/categories')) {
+    return 'admin';
+  }
+  if (pathname.startsWith('/reports')) {
+    return 'reports';
+  }
+  if (pathname.startsWith('/admin')) {
+    return 'admin';
+  }
   if (pathname.startsWith('/tickets')) {
-    if (ticketPresetStatus === 'resolved') {
-      return 'completed';
-    }
     if (ticketPresetScope === 'assigned') {
       return 'assigned';
+    }
+    if (ticketPresetScope === 'created') {
+      return 'created';
+    }
+    if (ticketPresetStatus === 'resolved') {
+      return 'completed';
     }
     return role === 'EMPLOYEE' ? 'created' : 'tickets';
   }
@@ -132,6 +176,33 @@ function App() {
       return;
     }
 
+    if (key === 'triage') {
+      navigate('/triage');
+      return;
+    }
+
+    if (key === 'manager') {
+      navigate('/manager');
+      return;
+    }
+
+    if (key === 'team') {
+      navigate('/team');
+      return;
+    }
+    if (key === 'sla-settings') {
+      navigate('/sla-settings');
+      return;
+    }
+    if (key === 'reports') {
+      navigate('/reports');
+      return;
+    }
+    if (key === 'admin') {
+      navigate('/admin');
+      return;
+    }
+
     if (key === 'completed') {
       setTicketPresetStatus('resolved');
       setTicketPresetScope('all');
@@ -148,7 +219,7 @@ function App() {
 
     if (key === 'created') {
       setTicketPresetStatus('open');
-      setTicketPresetScope('all');
+      setTicketPresetScope('created');
       navigate('/tickets');
       return;
     }
@@ -184,11 +255,67 @@ function App() {
 
   const visibleNav = navItems.filter((item) => item.roles.includes(currentPersona.role));
 
-  const viewTitle = navKey === 'dashboard' ? 'Dashboard' : 'Tickets';
+  const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
+    dashboard: {
+      title: 'Dashboard',
+      subtitle: 'Quick view of your ticket activity and updates.'
+    },
+    tickets: {
+      title: 'All Tickets',
+      subtitle: 'Track, filter, and manage your support requests.'
+    },
+    assigned: {
+      title: 'Assigned to Me',
+      subtitle: 'Tickets waiting for your action.'
+    },
+    created: {
+      title: currentPersona.role === 'EMPLOYEE' ? 'My Tickets' : 'Created by Me',
+      subtitle: 'Requests you have opened or own.'
+    },
+    completed: {
+      title: 'Completed',
+      subtitle: 'Closed and resolved tickets.'
+    },
+    triage: {
+      title: 'Triage Board',
+      subtitle: 'Monitor open tickets by status.'
+    },
+    manager: {
+      title: 'Manager Views',
+      subtitle: 'High-level ticket volume and workload insights.'
+    },
+    team: {
+      title: 'Team',
+      subtitle: 'Manage members and roles.'
+    },
+    'sla-settings': {
+      title: 'SLA Settings',
+      subtitle: 'Configure SLA targets per department.'
+    },
+    reports: {
+      title: 'Reports',
+      subtitle: 'Operational reporting (coming soon).'
+    },
+    admin: {
+      title: 'Admin',
+      subtitle: 'Configuration and settings.'
+    }
+  };
+
+  const viewTitleOverride = location.pathname.startsWith('/routing')
+    ? 'Routing Rules'
+    : location.pathname.startsWith('/categories')
+    ? 'Categories'
+    : undefined;
+  const viewSubtitleOverride = location.pathname.startsWith('/routing')
+    ? 'Manage keyword-based routing logic.'
+    : location.pathname.startsWith('/categories')
+    ? 'Organize ticket categories and subcategories.'
+    : undefined;
+
+  const viewTitle = viewTitleOverride ?? viewMeta[navKey]?.title ?? 'Dashboard';
   const viewSubtitle =
-    navKey === 'dashboard'
-      ? 'Quick view of your ticket activity and updates.'
-      : 'Track, filter, and manage your support requests.';
+    viewSubtitleOverride ?? viewMeta[navKey]?.subtitle ?? 'Quick view of your ticket activity and updates.';
 
   return (
     <div className="min-h-screen overflow-hidden">
@@ -211,6 +338,7 @@ function App() {
             title={viewTitle}
             subtitle={viewSubtitle}
             currentEmail={currentEmail}
+            currentLabel={currentPersona.label}
             personas={personas}
             onEmailChange={setCurrentEmail}
             onCreateTicket={() => setShowCreateModal(true)}
@@ -224,6 +352,90 @@ function App() {
                 <DashboardPage
                   refreshKey={refreshKey}
                 />
+              }
+            />
+            <Route
+              path="/triage"
+              element={
+                currentPersona.role === 'LEAD' || currentPersona.role === 'ADMIN' ? (
+                  <TriageBoardPage
+                    refreshKey={refreshKey}
+                    teamsList={teamsList}
+                    currentEmail={currentEmail}
+                  />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/manager"
+              element={
+                currentPersona.role === 'LEAD' || currentPersona.role === 'ADMIN' ? (
+                  <ManagerViewsPage refreshKey={refreshKey} teamsList={teamsList} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/team"
+              element={
+                currentPersona.role === 'LEAD' || currentPersona.role === 'ADMIN' ? (
+                  <TeamPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/sla-settings"
+              element={
+                currentPersona.role === 'ADMIN' ? (
+                  <SlaSettingsPage teamsList={teamsList} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                currentPersona.role === 'ADMIN' ? (
+                  <ReportsPage />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                currentPersona.role === 'ADMIN' ? (
+                  <AdminPage />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/routing"
+              element={
+                currentPersona.role === 'ADMIN' ? (
+                  <RoutingRulesPage teamsList={teamsList} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/categories"
+              element={
+                currentPersona.role === 'ADMIN' ? (
+                  <CategoriesPage />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
               }
             />
             <Route
@@ -245,6 +457,8 @@ function App() {
                 <TicketDetailPage
                   refreshKey={refreshKey}
                   currentEmail={currentEmail}
+                  role={currentPersona.role}
+                  teamsList={teamsList}
                 />
               }
             />
@@ -267,5 +481,3 @@ function App() {
 }
 
 export default App;
-
-

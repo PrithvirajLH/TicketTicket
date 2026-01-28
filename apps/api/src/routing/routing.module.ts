@@ -4,6 +4,6 @@ import { RoutingRulesService } from './routing.service';
 
 @Module({
   controllers: [RoutingRulesController],
-  providers: [RoutingRulesService]
+  providers: [RoutingRulesService],
 })
 export class RoutingRulesModule {}

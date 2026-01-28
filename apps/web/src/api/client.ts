@@ -10,6 +10,7 @@ export type UserRef = {
 export type TeamRef = {
   id: string;
   name: string;
+  assignmentStrategy?: string;
 };
 
 export type CategoryRef = {
@@ -49,6 +50,10 @@ export type TicketRecord = {
   assignee?: UserRef | null;
   assignedTeam?: TeamRef | null;
   category?: CategoryRef | null;
+  dueAt?: string | null;
+  firstResponseDueAt?: string | null;
+  firstResponseAt?: string | null;
+  slaPausedAt?: string | null;
 };
 
 export type TicketMessage = {
@@ -67,9 +72,27 @@ export type TicketEvent = {
   createdBy?: UserRef | null;
 };
 
+export type Attachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+  scanStatus?: string;
+  uploadedBy: UserRef;
+};
+
+export type TicketFollower = {
+  id: string;
+  createdAt: string;
+  user: UserRef;
+};
+
 export type TicketDetail = TicketRecord & {
   messages: TicketMessage[];
   events: TicketEvent[];
+  followers: TicketFollower[];
+  attachments: Attachment[];
 };
 
 export type TeamMember = {
@@ -78,6 +101,13 @@ export type TeamMember = {
   createdAt: string;
   user: UserRef;
   team: TeamRef;
+};
+
+export type SlaPolicy = {
+  priority: string;
+  firstResponseHours: number;
+  resolutionHours: number;
+  source?: 'team' | 'default';
 };
 
 export type TicketListResponse = {
@@ -170,6 +200,23 @@ export function fetchTicketById(id: string) {
   return apiFetch<TicketDetail>(`/tickets/${id}`);
 }
 
+export function fetchTicketFollowers(id: string) {
+  return apiFetch<{ data: TicketFollower[] }>(`/tickets/${id}/followers`);
+}
+
+export function followTicket(id: string, userId?: string) {
+  return apiFetch<{ data: TicketFollower[] }>(`/tickets/${id}/followers`, {
+    method: 'POST',
+    body: JSON.stringify(userId ? { userId } : {})
+  });
+}
+
+export function unfollowTicket(id: string, userId: string = 'me') {
+  return apiFetch<{ id: string }>(`/tickets/${id}/followers/${userId}`, {
+    method: 'DELETE'
+  });
+}
+
 export function createTicket(payload: CreateTicketPayload) {
   return apiFetch<TicketRecord>('/tickets', {
     method: 'POST',
@@ -182,6 +229,41 @@ export function addTicketMessage(ticketId: string, payload: AddMessagePayload) {
     method: 'POST',
     body: JSON.stringify(payload)
   });
+}
+
+export async function uploadTicketAttachment(ticketId: string, file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`${API_BASE}/tickets/${ticketId}/attachments`, {
+    method: 'POST',
+    headers: {
+      ...authHeaders()
+    },
+    body: form
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || 'Attachment upload failed');
+  }
+
+  return (await response.json()) as Attachment;
+}
+
+export async function downloadAttachment(attachmentId: string) {
+  const response = await fetch(`${API_BASE}/attachments/${attachmentId}`, {
+    headers: {
+      ...authHeaders()
+    }
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || 'Attachment download failed');
+  }
+
+  const blob = await response.blob();
+  return blob;
 }
 
 export function assignTicket(ticketId: string, payload: AssignPayload) {
@@ -264,6 +346,13 @@ export function addTeamMember(teamId: string, payload: { userId: string; role?: 
   });
 }
 
+export function updateTeam(teamId: string, payload: { name?: string; slug?: string; description?: string; isActive?: boolean; assignmentStrategy?: string }) {
+  return apiFetch<TeamRef>(`/teams/${teamId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
 export function updateTeamMember(teamId: string, memberId: string, payload: { role: string }) {
   return apiFetch<TeamMember>(`/teams/${teamId}/members/${memberId}`, {
     method: 'PATCH',
@@ -279,6 +368,23 @@ export function removeTeamMember(teamId: string, memberId: string) {
 
 export function fetchRoutingRules() {
   return apiFetch<{ data: RoutingRule[] }>('/routing-rules');
+}
+
+export function fetchSlaPolicies(teamId: string) {
+  return apiFetch<{ data: SlaPolicy[] }>(`/slas?teamId=${teamId}`);
+}
+
+export function updateSlaPolicies(teamId: string, policies: Array<Omit<SlaPolicy, 'source'>>) {
+  return apiFetch<{ data: SlaPolicy[] }>(`/slas/${teamId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ policies })
+  });
+}
+
+export function resetSlaPolicies(teamId: string) {
+  return apiFetch<{ data: SlaPolicy[] }>(`/slas/${teamId}`, {
+    method: 'DELETE'
+  });
 }
 
 export function createRoutingRule(payload: {

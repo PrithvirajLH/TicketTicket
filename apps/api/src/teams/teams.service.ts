@@ -1,10 +1,15 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { TeamRole, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { ListTeamsDto } from './dto/list-teams.dto';
+import { UpdateTeamDto } from './dto/update-team.dto';
 import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
 
 @Injectable()
@@ -21,9 +26,11 @@ export class TeamsService {
       OR: query.q
         ? [
             { name: { contains: query.q, mode: 'insensitive' as const } },
-            { description: { contains: query.q, mode: 'insensitive' as const } }
+            {
+              description: { contains: query.q, mode: 'insensitive' as const },
+            },
           ]
-        : undefined
+        : undefined,
     };
 
     const [total, data] = await Promise.all([
@@ -32,8 +39,8 @@ export class TeamsService {
         where,
         skip,
         take: pageSize,
-        orderBy: { name: 'asc' }
-      })
+        orderBy: { name: 'asc' },
+      }),
     ]);
 
     return {
@@ -42,8 +49,8 @@ export class TeamsService {
         page,
         pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize)
-      }
+        totalPages: Math.ceil(total / pageSize),
+      },
     };
   }
 
@@ -54,20 +61,38 @@ export class TeamsService {
       data: {
         name: payload.name,
         slug,
-        description: payload.description
-      }
+        description: payload.description,
+        assignmentStrategy: payload.assignmentStrategy,
+      },
+    });
+  }
+
+  async update(teamId: string, payload: UpdateTeamDto, user: AuthUser) {
+    this.ensureAdmin(user);
+
+    await this.ensureTeam(teamId);
+
+    return this.prisma.team.update({
+      where: { id: teamId },
+      data: {
+        name: payload.name,
+        slug: payload.slug,
+        description: payload.description,
+        isActive: payload.isActive,
+        assignmentStrategy: payload.assignmentStrategy,
+      },
     });
   }
 
   async listMembers(teamId: string, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureMemberAccess(user, teamId);
 
     await this.ensureTeam(teamId);
 
     const data = await this.prisma.teamMember.findMany({
       where: { teamId },
       include: { user: true, team: true },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
     });
 
     return { data };
@@ -83,25 +108,32 @@ export class TeamsService {
       where: {
         teamId_userId: {
           teamId,
-          userId: payload.userId
-        }
+          userId: payload.userId,
+        },
       },
       update: {
-        role: payload.role ?? TeamRole.AGENT
+        role: payload.role ?? TeamRole.AGENT,
       },
       create: {
         teamId,
         userId: payload.userId,
-        role: payload.role ?? TeamRole.AGENT
+        role: payload.role ?? TeamRole.AGENT,
       },
-      include: { user: true, team: true }
+      include: { user: true, team: true },
     });
   }
 
-  async updateMember(teamId: string, memberId: string, payload: UpdateTeamMemberDto, user: AuthUser) {
+  async updateMember(
+    teamId: string,
+    memberId: string,
+    payload: UpdateTeamMemberDto,
+    user: AuthUser,
+  ) {
     this.ensureAdmin(user);
 
-    const member = await this.prisma.teamMember.findUnique({ where: { id: memberId } });
+    const member = await this.prisma.teamMember.findUnique({
+      where: { id: memberId },
+    });
 
     if (!member || member.teamId !== teamId) {
       throw new NotFoundException('Team member not found');
@@ -110,14 +142,16 @@ export class TeamsService {
     return this.prisma.teamMember.update({
       where: { id: memberId },
       data: { role: payload.role },
-      include: { user: true, team: true }
+      include: { user: true, team: true },
     });
   }
 
   async removeMember(teamId: string, memberId: string, user: AuthUser) {
     this.ensureAdmin(user);
 
-    const member = await this.prisma.teamMember.findUnique({ where: { id: memberId } });
+    const member = await this.prisma.teamMember.findUnique({
+      where: { id: memberId },
+    });
 
     if (!member || member.teamId !== teamId) {
       throw new NotFoundException('Team member not found');
@@ -131,6 +165,20 @@ export class TeamsService {
   private ensureAdmin(user: AuthUser) {
     if (user.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Admin access required');
+    }
+  }
+
+  private ensureMemberAccess(user: AuthUser, teamId: string) {
+    if (user.role === UserRole.ADMIN) {
+      return;
+    }
+
+    const isTeamMember =
+      user.teamId === teamId &&
+      (user.role === UserRole.LEAD || user.role === UserRole.AGENT);
+
+    if (!isTeamMember) {
+      throw new ForbiddenException('Team access required');
     }
   }
 

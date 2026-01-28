@@ -1,4 +1,12 @@
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdateRoutingRuleDto {
   @IsOptional()

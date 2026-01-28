@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,13 +18,15 @@ export class CategoriesService {
     const where = {
       isActive: query.includeInactive ? undefined : true,
       parentId: query.parentId ?? undefined,
-      name: query.q ? { contains: query.q, mode: 'insensitive' as const } : undefined
+      name: query.q
+        ? { contains: query.q, mode: 'insensitive' as const }
+        : undefined,
     };
 
     const data = await this.prisma.category.findMany({
       where,
       include: { parent: true },
-      orderBy: [{ name: 'asc' }]
+      orderBy: [{ name: 'asc' }],
     });
 
     return { data };
@@ -41,9 +47,9 @@ export class CategoriesService {
         slug,
         description: payload.description,
         parentId: payload.parentId ?? null,
-        isActive: payload.isActive ?? true
+        isActive: payload.isActive ?? true,
       },
-      include: { parent: true }
+      include: { parent: true },
     });
   }
 
@@ -67,9 +73,9 @@ export class CategoriesService {
         slug: payload.slug,
         description: payload.description,
         parentId: payload.parentId ?? undefined,
-        isActive: payload.isActive
+        isActive: payload.isActive,
       },
-      include: { parent: true }
+      include: { parent: true },
     });
   }
 
@@ -82,7 +88,9 @@ export class CategoriesService {
       throw new NotFoundException('Category not found');
     }
 
-    const children = await this.prisma.category.count({ where: { parentId: id } });
+    const children = await this.prisma.category.count({
+      where: { parentId: id },
+    });
     if (children > 0) {
       throw new ForbiddenException('Category has subcategories');
     }

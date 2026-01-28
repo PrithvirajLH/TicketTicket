@@ -35,7 +35,7 @@ export function Sidebar({
         {!collapsed && (
           <div>
             <p className="text-sm font-semibold text-slate-900">Unified Support</p>
-            <p className="text-xs text-slate-500">Enterprise Desk</p>
+            <p className="text-xs text-slate-600">Enterprise Desk</p>
           </div>
         )}
       </div>
@@ -54,7 +54,7 @@ export function Sidebar({
                 isActive ? 'bg-slate-900 text-white shadow-soft' : 'text-slate-700 hover:bg-slate-100/70'
               }`}
             >
-              <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+              <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-600'}`} />
               {!collapsed && <span className="flex-1 text-left truncate">{label}</span>}
             </button>
           );
@@ -62,11 +62,11 @@ export function Sidebar({
       </nav>
 
       <div className="mt-6 border-t border-slate-200/60 pt-4 flex items-center justify-between">
-        {!collapsed && <span className="text-xs text-slate-500">Secure internal system</span>}
+        {!collapsed && <span className="text-xs text-slate-600">Secure internal system</span>}
         <button
           type="button"
           onClick={onToggle}
-          className="h-8 w-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900"
+          className="h-8 w-8 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:text-slate-900"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

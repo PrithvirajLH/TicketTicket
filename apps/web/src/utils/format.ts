@@ -95,3 +95,32 @@ export function statusBadgeClass(status?: string | null) {
       return 'bg-slate-100 text-slate-700 border-slate-200';
   }
 }
+
+export function getSlaTone(args: {
+  dueAt?: string | null;
+  completedAt?: string | null;
+  status?: string | null;
+  slaPausedAt?: string | null;
+}) {
+  const { dueAt, completedAt, status, slaPausedAt } = args;
+  if (completedAt) {
+    return { label: 'Met', className: 'border-emerald-200 bg-emerald-100 text-emerald-700' };
+  }
+  if (!dueAt) {
+    return { label: 'No SLA', className: 'border-slate-200 bg-slate-100 text-slate-600' };
+  }
+  if (status === 'WAITING_ON_REQUESTER' || status === 'WAITING_ON_VENDOR') {
+    return {
+      label: slaPausedAt ? 'Paused' : 'Waiting',
+      className: 'border-amber-200 bg-amber-100 text-amber-700'
+    };
+  }
+  const ms = new Date(dueAt).getTime() - Date.now();
+  if (ms < 0) {
+    return { label: 'Breached', className: 'border-rose-200 bg-rose-100 text-rose-700' };
+  }
+  if (ms <= 4 * 60 * 60 * 1000) {
+    return { label: 'At risk', className: 'border-amber-200 bg-amber-100 text-amber-700' };
+  }
+  return { label: 'On track', className: 'border-sky-200 bg-sky-100 text-sky-700' };
+}

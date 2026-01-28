@@ -45,6 +45,11 @@ enum TeamRole {
   ADMIN
 }
 
+enum TeamAssignmentStrategy {
+  QUEUE_ONLY
+  ROUND_ROBIN
+}
+
 enum UserRole {
   EMPLOYEE
   AGENT
@@ -55,6 +60,24 @@ enum UserRole {
 enum AccessLevel {
   READ
   WRITE
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+enum AttachmentScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
 }
 
 model User {
@@ -72,6 +95,10 @@ model User {
   assignedTickets    Ticket[]      @relation("TicketAssignee")
   messages           TicketMessage[]
   events             TicketEvent[]
+  ticketFollows      TicketFollower[]
+  notificationOutbox NotificationOutbox[]
+  attachments        Attachment[]
+  lastAssignedTeams  Team[]        @relation("TeamLastAssigned")
 }
 
 model Team {
@@ -79,6 +106,8 @@ model Team {
   name        String
   slug        String       @unique
   description String?
+  assignmentStrategy TeamAssignmentStrategy @default(QUEUE_ONLY)
+  lastAssignedUserId String?
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -87,6 +116,8 @@ model Team {
   tickets     Ticket[]
   ticketAccess TicketAccess[]
   routingRules RoutingRule[]
+  slaPolicies  SlaPolicy[]
+  lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
 }
 
 model Category {
@@ -131,6 +162,9 @@ model Ticket {
   assigneeId     String?
   categoryId     String?
   dueAt          DateTime?
+  firstResponseDueAt DateTime?
+  firstResponseAt DateTime?
+  slaPausedAt    DateTime?
   resolvedAt     DateTime?
   closedAt       DateTime?
   completedAt    DateTime?
@@ -144,6 +178,9 @@ model Ticket {
   messages       TicketMessage[]
   events         TicketEvent[]
   accessGrants   TicketAccess[]
+  followers      TicketFollower[]
+  attachments    Attachment[]
+  notificationOutbox NotificationOutbox[]
 }
 
 model TicketMessage {
@@ -194,4 +231,78 @@ model RoutingRule {
   updatedAt DateTime @updatedAt
 
   team      Team     @relation(fields: [teamId], references: [id])
+}
+
+model SlaPolicy {
+  id                 String         @id @default(uuid())
+  teamId             String
+  priority           TicketPriority
+  firstResponseHours Int
+  resolutionHours    Int
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  team               Team           @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, priority])
+}
+
+model TicketFollower {
+  id        String   @id @default(uuid())
+  ticketId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model NotificationOutbox {
+  id        String             @id @default(uuid())
+  channel   NotificationChannel @default(EMAIL)
+  status    OutboxStatus       @default(PENDING)
+  eventType String
+  toEmail   String
+  toUserId  String?
+  ticketId  String?
+  subject   String
+  body      String
+  payload   Json?
+  attempts  Int                @default(0)
+  lastError String?
+  sentAt    DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  toUser    User?              @relation(fields: [toUserId], references: [id])
+  ticket    Ticket?            @relation(fields: [ticketId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([toEmail])
+  @@index([ticketId])
+}
+
+model Attachment {
+  id           String               @id @default(uuid())
+  ticketId     String
+  uploadedById String
+  fileName     String
+  contentType  String
+  sizeBytes    Int
+  storageKey   String
+  scanStatus   AttachmentScanStatus @default(PENDING)
+  scanCheckedAt DateTime?
+  scanError    String?
+  createdAt    DateTime             @default(now())
+
+  ticket       Ticket               @relation(fields: [ticketId], references: [id])
+  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+
+  @@index([ticketId])
+  @@index([uploadedById])
+  @@index([scanStatus])
 }

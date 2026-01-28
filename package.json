@@ -14,13 +14,17 @@
     "format": "npm run format -w apps/api && npm run format -w apps/web",
     "test:db:reset": "npm run test:db:reset -w apps/api",
     "test": "npm run test:db:reset && npm run test:integration -w apps/api",
-    "test:watch": "npm run test:watch -w apps/api"
+    "test:watch": "npm run test:watch -w apps/api",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:debug": "playwright test --debug"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "description": "",
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
     "concurrently": "^9.2.1"
   },
   "dependencies": {

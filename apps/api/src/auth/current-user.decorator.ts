@@ -12,7 +12,9 @@ export type AuthUser = {
 
 export type AuthRequest = Request & { user?: AuthUser };
 
-export const CurrentUser = createParamDecorator((data: unknown, ctx: ExecutionContext) => {
-  const request = ctx.switchToHttp().getRequest<AuthRequest>();
-  return request.user;
-});
+export const CurrentUser = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest<AuthRequest>();
+    return request.user;
+  },
+);

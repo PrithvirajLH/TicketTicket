@@ -15,10 +15,12 @@ export class UsersService {
       role: query.role,
       OR: query.q
         ? [
-            { displayName: { contains: query.q, mode: 'insensitive' as const } },
-            { email: { contains: query.q, mode: 'insensitive' as const } }
+            {
+              displayName: { contains: query.q, mode: 'insensitive' as const },
+            },
+            { email: { contains: query.q, mode: 'insensitive' as const } },
           ]
-        : undefined
+        : undefined,
     };
 
     const [total, data] = await Promise.all([
@@ -27,8 +29,8 @@ export class UsersService {
         where,
         skip,
         take: pageSize,
-        orderBy: { displayName: 'asc' }
-      })
+        orderBy: { displayName: 'asc' },
+      }),
     ]);
 
     return {
@@ -37,8 +39,8 @@ export class UsersService {
         page,
         pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize)
-      }
+        totalPages: Math.ceil(total / pageSize),
+      },
     };
   }
 }

@@ -3,7 +3,7 @@ import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchTickets, type TicketRecord, type TeamRef } from '../api/client';
 import type { Role, SortField, StatusFilter, TicketScope } from '../types';
-import { formatDate, formatStatus } from '../utils/format';
+import { formatDate, formatStatus, getSlaTone } from '../utils/format';
 
 export function TicketsPage({
   role,
@@ -41,7 +41,7 @@ export function TicketsPage({
 
   useEffect(() => {
     loadTickets();
-  }, [statusFilter, sortField, teamFilterId, refreshKey]);
+  }, [statusFilter, sortField, teamFilterId, scopeFilter, refreshKey]);
 
   async function loadTickets() {
     setLoadingTickets(true);
@@ -54,7 +54,8 @@ export function TicketsPage({
         statusGroup: statusFilter,
         sort: effectiveSort,
         order: 'desc',
-        teamId: teamFilterId || undefined
+        teamId: teamFilterId || undefined,
+        scope: scopeFilter === 'all' ? undefined : scopeFilter
       });
       setTickets(response.data);
     } catch (error) {
@@ -68,6 +69,9 @@ export function TicketsPage({
   const scopedTickets = useMemo(() => {
     if (role === 'EMPLOYEE') {
       return tickets;
+    }
+    if (scopeFilter === 'created') {
+      return tickets.filter((ticket) => ticket.requester?.email === currentEmail);
     }
     if (scopeFilter === 'assigned') {
       return tickets.filter((ticket) => ticket.assignee?.email === currentEmail);
@@ -108,7 +112,7 @@ export function TicketsPage({
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">
-              {role === 'EMPLOYEE' ? 'Your tickets' : 'Team tickets'}
+              {role === 'EMPLOYEE' ? 'Your tickets' : scopeFilter === 'created' ? 'Created by me' : 'Team tickets'}
             </h3>
             <p className="text-sm text-slate-500">Filter open, resolved, or all requests.</p>
           </div>
@@ -129,6 +133,7 @@ export function TicketsPage({
                 onChange={(event) => setScopeFilter(event.target.value as TicketScope)}
               >
                 <option value="all">All visible</option>
+                <option value="created">Created by me</option>
                 <option value="assigned">Assigned to me</option>
                 <option value="unassigned">Unassigned</option>
               </select>
@@ -195,9 +200,26 @@ export function TicketsPage({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{ticket.subject}</p>
-                    <p className="text-xs text-slate-500">
-                      {ticket.assignedTeam?.name ?? 'Unassigned'} · {formatStatus(ticket.status)}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>
+                        {ticket.assignedTeam?.name ?? 'Unassigned'} · {formatStatus(ticket.status)}
+                      </span>
+                      {(() => {
+                        const sla = getSlaTone({
+                          dueAt: ticket.dueAt,
+                          completedAt: ticket.completedAt,
+                          status: ticket.status,
+                          slaPausedAt: ticket.slaPausedAt
+                        });
+                        return (
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sla.className}`}
+                          >
+                            {sla.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <span className="text-xs text-slate-400">{formatDate(ticket.createdAt)}</span>
                 </div>

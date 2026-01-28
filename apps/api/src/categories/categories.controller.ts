@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { CategoriesService } from './categories.service';
@@ -16,7 +25,10 @@ export class CategoriesController {
   }
 
   @Post()
-  async create(@Body() payload: CreateCategoryDto, @CurrentUser() user: AuthUser) {
+  async create(
+    @Body() payload: CreateCategoryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.categoriesService.create(payload, user);
   }
 
@@ -24,7 +36,7 @@ export class CategoriesController {
   async update(
     @Param('id') id: string,
     @Body() payload: UpdateCategoryDto,
-    @CurrentUser() user: AuthUser
+    @CurrentUser() user: AuthUser,
   ) {
     return this.categoriesService.update(id, payload, user);
   }

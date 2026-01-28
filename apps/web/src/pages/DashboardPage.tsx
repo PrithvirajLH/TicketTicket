@@ -52,15 +52,15 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
           : (
             <>
               <div className="glass-card p-5">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Open tickets</p>
+                <p className="text-xs uppercase tracking-wide text-slate-600 font-medium">Open tickets</p>
                 <p className="text-3xl font-semibold text-slate-900 mt-2">{dashboardStats.open}</p>
               </div>
               <div className="glass-card p-5">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Resolved & closed</p>
+                <p className="text-xs uppercase tracking-wide text-slate-600 font-medium">Resolved & closed</p>
                 <p className="text-3xl font-semibold text-slate-900 mt-2">{dashboardStats.resolved}</p>
               </div>
               <div className="glass-card p-5">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Total requests</p>
+                <p className="text-xs uppercase tracking-wide text-slate-600 font-medium">Total requests</p>
                 <p className="text-3xl font-semibold text-slate-900 mt-2">{dashboardStats.total}</p>
               </div>
             </>
@@ -71,7 +71,7 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Recent activity</h3>
-            <p className="text-sm text-slate-500">Latest updates across your tickets.</p>
+            <p className="text-sm text-slate-600">Latest updates across your tickets.</p>
           </div>
         </div>
         {loadingDashboard && (
@@ -79,7 +79,7 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={`recent-skeleton-${index}`}
-                className="rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 animate-pulse"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 animate-pulse"
               >
                 <div className="h-3 w-40 rounded-full bg-slate-200" />
                 <div className="mt-2 h-3 w-24 rounded-full bg-slate-100" />
@@ -88,7 +88,7 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
           </div>
         )}
         {!loadingDashboard && recentTickets.length === 0 && (
-          <p className="text-sm text-slate-500">No recent tickets yet.</p>
+          <p className="text-sm text-slate-600">No recent tickets yet.</p>
         )}
         <div className="space-y-3">
           {recentTickets.map((ticket) => (
@@ -96,15 +96,15 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
               key={ticket.id}
               type="button"
               onClick={() => navigate(`/tickets/${ticket.id}`)}
-              className="w-full flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white/70 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+              className="w-full flex items-center justify-between rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
             >
               <div>
                 <p className="text-sm font-medium text-slate-900">{ticket.subject}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-600">
                   {ticket.assignedTeam?.name ?? 'Unassigned'} · {formatStatus(ticket.status)}
                 </p>
               </div>
-              <span className="text-xs text-slate-400">{formatDate(ticket.updatedAt)}</span>
+              <span className="text-xs text-slate-500">{formatDate(ticket.updatedAt)}</span>
             </button>
           ))}
         </div>

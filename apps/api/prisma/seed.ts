@@ -37,6 +37,74 @@ function buildDisplayId(teamName: string | null, createdAt: Date, ticketNumber: 
   return `${getDepartmentCode(teamName)}_${yyyy}${mm}${dd}_${sequence}`;
 }
 
+async function seedMinimal() {
+  await prisma.ticketAccess.deleteMany();
+  await prisma.ticketEvent.deleteMany();
+  await prisma.ticketMessage.deleteMany();
+  await prisma.attachment.deleteMany();
+  await prisma.ticket.deleteMany();
+  await prisma.teamMember.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.routingRule.deleteMany();
+  await prisma.team.deleteMany();
+  await prisma.category.deleteMany();
+
+  const aiTeam = await prisma.team.create({
+    data: { name: 'AI', slug: 'ai', description: 'AI support team' }
+  });
+
+  await prisma.user.createMany({
+    data: [
+      {
+        email: 'jane.doe@company.com',
+        displayName: 'Jane Doe',
+        role: UserRole.EMPLOYEE,
+        department: 'Finance',
+        location: 'Remote'
+      },
+      {
+        email: 'alex.park@company.com',
+        displayName: 'Alex Park',
+        role: UserRole.AGENT,
+        department: 'AI',
+        location: 'Remote'
+      },
+      {
+        email: 'maria.chen@company.com',
+        displayName: 'Maria Chen',
+        role: UserRole.LEAD,
+        department: 'AI',
+        location: 'Remote'
+      },
+      {
+        email: 'sam.rivera@company.com',
+        displayName: 'Sam Rivera',
+        role: UserRole.ADMIN,
+        department: 'AI',
+        location: 'Remote'
+      }
+    ]
+  });
+
+  const users = await prisma.user.findMany({
+    where: { email: { in: ['alex.park@company.com', 'maria.chen@company.com', 'sam.rivera@company.com'] } }
+  });
+
+  const roleByEmail = new Map([
+    ['alex.park@company.com', TeamRole.AGENT],
+    ['maria.chen@company.com', TeamRole.LEAD],
+    ['sam.rivera@company.com', TeamRole.ADMIN]
+  ]);
+
+  await prisma.teamMember.createMany({
+    data: users.map((user) => ({
+      teamId: aiTeam.id,
+      userId: user.id,
+      role: roleByEmail.get(user.email) ?? TeamRole.AGENT
+    }))
+  });
+}
+
 async function seedDev() {
   const teams = [
     { name: 'IT Service Desk', slug: 'it-service-desk', description: 'Devices, access, core systems' },
@@ -512,6 +580,7 @@ async function seedTest() {
   await prisma.ticketAccess.deleteMany();
   await prisma.ticketEvent.deleteMany();
   await prisma.ticketMessage.deleteMany();
+  await prisma.attachment.deleteMany();
   await prisma.ticket.deleteMany();
   await prisma.teamMember.deleteMany();
   await prisma.user.deleteMany();
@@ -585,6 +654,19 @@ async function seedTest() {
     data: [
       { id: 'e1111111-1111-1111-1111-111111111111', teamId: ids.teamIt, userId: ids.agent, role: TeamRole.AGENT },
       { id: 'e2222222-2222-2222-2222-222222222222', teamId: ids.teamIt, userId: ids.lead, role: TeamRole.LEAD }
+    ]
+  });
+
+  await prisma.slaPolicy.createMany({
+    data: [
+      { teamId: ids.teamIt, priority: TicketPriority.P1, firstResponseHours: 1, resolutionHours: 4 },
+      { teamId: ids.teamIt, priority: TicketPriority.P2, firstResponseHours: 4, resolutionHours: 24 },
+      { teamId: ids.teamIt, priority: TicketPriority.P3, firstResponseHours: 8, resolutionHours: 72 },
+      { teamId: ids.teamIt, priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+      { teamId: ids.teamHr, priority: TicketPriority.P1, firstResponseHours: 2, resolutionHours: 8 },
+      { teamId: ids.teamHr, priority: TicketPriority.P2, firstResponseHours: 6, resolutionHours: 32 },
+      { teamId: ids.teamHr, priority: TicketPriority.P3, firstResponseHours: 12, resolutionHours: 96 },
+      { teamId: ids.teamHr, priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 }
     ]
   });
 
@@ -695,6 +777,10 @@ async function seedTest() {
 }
 
 async function seed() {
+  if (process.env.SEED_MODE === 'minimal') {
+    await seedMinimal();
+    return;
+  }
   if (process.env.SEED_MODE === 'test' || process.env.NODE_ENV === 'test') {
     await seedTest();
     return;

@@ -2,7 +2,7 @@ export type Role = 'EMPLOYEE' | 'AGENT' | 'LEAD' | 'ADMIN';
 
 export type StatusFilter = 'open' | 'resolved' | 'all';
 export type SortField = 'createdAt' | 'completedAt';
-export type TicketScope = 'all' | 'assigned' | 'unassigned';
+export type TicketScope = 'all' | 'assigned' | 'unassigned' | 'created';
 
 export type DashboardStats = {
   open: number;
