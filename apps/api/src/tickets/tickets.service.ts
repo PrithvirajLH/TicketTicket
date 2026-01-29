@@ -144,6 +144,45 @@ export class TicketsService {
     };
   }
 
+  async getCounts(user: AuthUser): Promise<{
+    assignedToMe: number;
+    triage: number;
+    open: number;
+  }> {
+    const accessFilter = this.buildAccessFilter(user);
+    const openFilter: Prisma.TicketWhereInput = {
+      status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+    };
+
+    const [assignedToMe, triage, openTotal] = await Promise.all([
+      this.prisma.ticket.count({
+        where: {
+          AND: [
+            accessFilter,
+            openFilter,
+            { assigneeId: user.id },
+          ],
+        },
+      }),
+      this.prisma.ticket.count({
+        where: {
+          AND: [
+            accessFilter,
+            openFilter,
+            { status: TicketStatus.NEW, assigneeId: null },
+          ],
+        },
+      }),
+      this.prisma.ticket.count({
+        where: {
+          AND: [accessFilter, openFilter],
+        },
+      }),
+    ]);
+
+    return { assignedToMe, triage, open: openTotal };
+  }
+
   async getById(id: string, user: AuthUser) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },

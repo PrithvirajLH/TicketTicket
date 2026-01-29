@@ -34,6 +34,11 @@ export class TicketsController {
     return this.ticketsService.list(query, user);
   }
 
+  @Get('counts')
+  async getCounts(@CurrentUser() user: AuthUser) {
+    return this.ticketsService.getCounts(user);
+  }
+
   @Get(':id')
   async getById(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.ticketsService.getById(id, user);

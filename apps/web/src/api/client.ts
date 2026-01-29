@@ -201,6 +201,10 @@ export function fetchTickets(params?: Record<string, string | number | undefined
   return apiFetch<TicketListResponse>(`/tickets${suffix}`);
 }
 
+export function fetchTicketCounts() {
+  return apiFetch<{ assignedToMe: number; triage: number; open: number }>('/tickets/counts');
+}
+
 export function fetchTicketById(id: string) {
   return apiFetch<TicketDetail>(`/tickets/${id}`);
 }

@@ -13,7 +13,14 @@ import {
   Users
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { createTicket, fetchTeams, getDemoUserEmail, setDemoUserEmail, type TeamRef } from './api/client';
+import {
+  createTicket,
+  fetchTeams,
+  fetchTicketCounts,
+  getDemoUserEmail,
+  setDemoUserEmail,
+  type TeamRef
+} from './api/client';
 import { CommandPalette } from './components/CommandPalette';
 import { CreateTicketModal, type CreateTicketForm } from './components/CreateTicketModal';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
@@ -150,6 +157,11 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
+  const [ticketCounts, setTicketCounts] = useState<{
+    assignedToMe: number;
+    triage: number;
+    open: number;
+  } | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
 
@@ -198,6 +210,12 @@ function App() {
       .then((response) => setTeamsList(response.data))
       .catch(() => setTeamsList([]));
   }, [currentEmail]);
+
+  useEffect(() => {
+    fetchTicketCounts()
+      .then(setTicketCounts)
+      .catch(() => setTicketCounts(null));
+  }, [currentEmail, refreshKey]);
 
   function handleNavSelect(key: NavKey) {
     if (key === 'dashboard') {
@@ -282,7 +300,22 @@ function App() {
     }
   }
 
-  const visibleNav = navItems.filter((item) => item.roles.includes(currentPersona.role));
+  const visibleNav = useMemo(() => {
+    const filtered = navItems.filter((item) => item.roles.includes(currentPersona.role));
+    return filtered.map((item) => ({
+      key: item.key,
+      label: item.label,
+      icon: item.icon,
+      badge:
+        item.key === 'assigned'
+          ? ticketCounts?.assignedToMe
+          : item.key === 'triage'
+            ? ticketCounts?.triage
+            : item.key === 'tickets'
+              ? ticketCounts?.open
+              : undefined
+    }));
+  }, [currentPersona.role, ticketCounts]);
 
   const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
     dashboard: {
