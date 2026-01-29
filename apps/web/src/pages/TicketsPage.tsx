@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { fetchTickets, type TicketRecord, type TeamRef } from '../api/client';
+import {
+  bulkAssignTickets,
+  bulkPriorityTickets,
+  bulkStatusTickets,
+  bulkTransferTickets,
+  fetchTickets,
+  fetchUsers,
+  type TicketRecord,
+  type TeamRef,
+  type UserRef
+} from '../api/client';
+import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { useTicketSelection } from '../hooks/useTicketSelection';
 import type { Role, SortField, StatusFilter, TicketScope } from '../types';
 import { formatDate, formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
 
@@ -30,6 +42,8 @@ export function TicketsPage({
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
+  const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     setStatusFilter(presetStatus);
@@ -96,6 +110,9 @@ export function TicketsPage({
     });
   }, [scopedTickets, searchQuery]);
 
+  const ticketIds = useMemo(() => filteredTickets.map((t) => t.id), [filteredTickets]);
+  const selection = useTicketSelection(ticketIds);
+
   useEffect(() => {
     if (!teamFilterId) {
       return;
@@ -106,9 +123,76 @@ export function TicketsPage({
     }
   }, [teamsList, teamFilterId]);
 
+  // Fetch assignable users for bulk assign (agents/leads/admins only)
+  useEffect(() => {
+    if (role === 'EMPLOYEE') {
+      setAssignableUsers([]);
+      return;
+    }
+    fetchUsers()
+      .then((res) => setAssignableUsers(res.data))
+      .catch(() => setAssignableUsers([]));
+  }, [role]);
+
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  async function handleBulkAssign(assigneeId?: string) {
+    const result = await bulkAssignTickets(selection.selectedIds, assigneeId);
+    return result;
+  }
+
+  async function handleBulkTransfer(newTeamId: string, assigneeId?: string) {
+    return bulkTransferTickets(selection.selectedIds, newTeamId, assigneeId);
+  }
+
+  async function handleBulkStatus(status: string) {
+    return bulkStatusTickets(selection.selectedIds, status);
+  }
+
+  async function handleBulkPriority(priority: string) {
+    return bulkPriorityTickets(selection.selectedIds, priority);
+  }
+
   return (
     <section className="mt-8 space-y-6 animate-fade-in">
+      {toast && (
+        <div className="fixed right-8 top-6 z-50">
+          <div
+            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg ${
+              toast.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-rose-200 bg-rose-50 text-rose-700'
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      )}
+
       <div className="glass-card p-6">
+        {selection.isSomeSelected && role !== 'EMPLOYEE' && (
+          <BulkActionsToolbar
+            selectedCount={selection.selectedCount}
+            onClearSelection={selection.clearSelection}
+            onBulkAssign={handleBulkAssign}
+            onBulkTransfer={handleBulkTransfer}
+            onBulkStatus={handleBulkStatus}
+            onBulkPriority={handleBulkPriority}
+            teamsList={teamsList}
+            assignableUsers={assignableUsers}
+            onSuccess={(msg) => {
+              setToast({ message: msg, type: 'success' });
+              loadTickets();
+            }}
+            onError={(msg) => setToast({ message: msg, type: 'error' })}
+          />
+        )}
+
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">
@@ -188,18 +272,48 @@ export function TicketsPage({
           <p className="text-sm text-slate-500 mt-4">No tickets match this filter.</p>
         )}
 
+        {!loadingTickets && filteredTickets.length > 0 && role !== 'EMPLOYEE' && (
+          <div className="mt-4 flex items-center gap-3 px-1">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={selection.isAllSelected}
+                onChange={selection.toggleAll}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+              />
+              Select all
+            </label>
+          </div>
+        )}
+
         {!loadingTickets && (
           <div className="mt-4 space-y-3">
             {filteredTickets.map((ticket) => (
-              <button
+              <div
                 key={ticket.id}
-                type="button"
-                onClick={() => navigate(`/tickets/${ticket.id}`)}
-                className="w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+                className="flex items-center gap-3 w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 transition hover:shadow-soft group"
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{ticket.subject}</p>
+                {role !== 'EMPLOYEE' && (
+                  <label
+                    className="flex-shrink-0 cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selection.isSelected(ticket.id)}
+                      onChange={() => selection.toggle(ticket.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                    />
+                  </label>
+                )}
+                <button
+                  type="button"
+                  onClick={() => navigate(`/tickets/${ticket.id}`)}
+                  className="flex-1 flex items-center justify-between text-left min-w-0"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{ticket.subject}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span>{ticket.assignedTeam?.name ?? 'Unassigned'}</span>
                       {(() => {
@@ -219,7 +333,7 @@ export function TicketsPage({
                       })()}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <span
                       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusBadgeClass(ticket.status)}`}
                     >
@@ -227,8 +341,8 @@ export function TicketsPage({
                     </span>
                     <span className="text-xs text-slate-400">{formatDate(ticket.createdAt)}</span>
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             ))}
           </div>
         )}

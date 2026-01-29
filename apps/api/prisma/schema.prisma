@@ -272,6 +272,8 @@ model SlaInstance {
   resolutionDueAt       DateTime?
   pausedAt              DateTime?
   nextDueAt             DateTime?
+  firstResponseAtRiskNotifiedAt DateTime?
+  resolutionAtRiskNotifiedAt  DateTime?
   firstResponseBreachedAt DateTime?
   resolutionBreachedAt  DateTime?
   createdAt             DateTime       @default(now())

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, TicketPriority, TicketStatus, TeamRole, User } from '@prisma/client';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from './sla-engine.service';
@@ -13,10 +14,13 @@ const SLA_BACKFILL_LOCK_KEY = 847292;
 
 // Notification intent collected during transaction, dispatched after commit
 type NotificationIntent = {
+  kind: 'BREACH' | 'AT_RISK';
   leadUsers: User[];
   onCallEmails: string[];
   subject: string;
   body: string;
+  ticketSubject: string;
+  timeRemaining?: string;
   ticketId: string;
   payload: Prisma.InputJsonValue;
 };
@@ -30,6 +34,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly inAppNotifications: InAppNotificationsService,
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
   ) {}
@@ -70,11 +75,18 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
 
     this.running = true;
     try {
-      // Run backfill separately with its own session-level lock
-      // This prevents timeout issues since syncFromTicket creates its own transactions
-      await this.runBackfillWithLock();
+      // Run backfill separately with its own session-level lock.
+      // If backfill fails, we still run breach processing so existing instances are checked.
+      try {
+        await this.runBackfillWithLock();
+      } catch (backfillError) {
+        console.error('SLA backfill failed', backfillError);
+      }
 
       const now = new Date();
+      const atRiskThresholdMs = this.atRiskThresholdMs();
+      const windowEnd =
+        atRiskThresholdMs > 0 ? new Date(now.getTime() + atRiskThresholdMs) : now;
       const batchSize = Number(
         this.config.get<string>('SLA_BREACH_BATCH_SIZE') ?? '100',
       );
@@ -95,7 +107,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         }
 
         const instances = await tx.slaInstance.findMany({
-          where: { nextDueAt: { lte: now } },
+          where: { nextDueAt: { lte: windowEnd } },
           orderBy: { nextDueAt: 'asc' },
           take: batchSize,
           include: { ticket: { include: { assignedTeam: true } } },
@@ -146,13 +158,10 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         take: backfillBatchSize,
       });
 
-      // Pass tx to syncFromTicket so all operations use the same connection
+      // Pass tx to syncFromTicket so all operations use the same connection.
+      // Fail fast: any error aborts the transaction and releases the lock.
       for (const ticket of ticketsWithoutInstance) {
-        try {
-          await this.slaEngine.syncFromTicket(ticket.id, undefined, tx);
-        } catch (error) {
-          console.error(`Failed to backfill SlaInstance for ticket ${ticket.id}`, error);
-        }
+        await this.slaEngine.syncFromTicket(ticket.id, undefined, tx);
       }
     });
   }
@@ -168,6 +177,8 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       resolutionDueAt: Date | null;
       pausedAt: Date | null;
       nextDueAt: Date | null;
+      firstResponseAtRiskNotifiedAt: Date | null;
+      resolutionAtRiskNotifiedAt: Date | null;
       firstResponseBreachedAt: Date | null;
       resolutionBreachedAt: Date | null;
       ticket: {
@@ -213,6 +224,49 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     if (shouldBreachResolution) {
       await this.handleBreach(tx, instance, ticket, 'RESOLUTION', now, notificationIntents);
       return;
+    }
+
+    const atRiskThresholdMs = this.atRiskThresholdMs();
+    if (atRiskThresholdMs > 0) {
+      const shouldNotifyFirstResponseAtRisk =
+        !ticket.firstResponseAt &&
+        !instance.firstResponseBreachedAt &&
+        !instance.firstResponseAtRiskNotifiedAt &&
+        !!instance.firstResponseDueAt &&
+        instance.firstResponseDueAt > now &&
+        instance.firstResponseDueAt.getTime() - now.getTime() <= atRiskThresholdMs;
+
+      if (shouldNotifyFirstResponseAtRisk) {
+        await this.handleAtRisk(
+          tx,
+          instance,
+          ticket,
+          'FIRST_RESPONSE',
+          now,
+          notificationIntents,
+        );
+        return;
+      }
+
+      const shouldNotifyResolutionAtRisk =
+        !ticket.completedAt &&
+        !instance.resolutionBreachedAt &&
+        !instance.resolutionAtRiskNotifiedAt &&
+        !!instance.resolutionDueAt &&
+        instance.resolutionDueAt > now &&
+        instance.resolutionDueAt.getTime() - now.getTime() <= atRiskThresholdMs;
+
+      if (shouldNotifyResolutionAtRisk) {
+        await this.handleAtRisk(
+          tx,
+          instance,
+          ticket,
+          'RESOLUTION',
+          now,
+          notificationIntents,
+        );
+        return;
+      }
     }
 
     await this.syncInstanceInTx(tx, instance, ticket);
@@ -379,10 +433,118 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
 
     // Queue notification intent to be dispatched after transaction commits
     notificationIntents.push({
+      kind: 'BREACH',
       leadUsers,
       onCallEmails,
       subject,
       body,
+      ticketSubject: ticket.subject,
+      ticketId: ticket.id,
+      payload,
+    });
+  }
+
+  private async handleAtRisk(
+    tx: Prisma.TransactionClient,
+    instance: {
+      id: string;
+      ticketId: string;
+      policyId: string | null;
+      firstResponseDueAt: Date | null;
+      resolutionDueAt: Date | null;
+      firstResponseAtRiskNotifiedAt: Date | null;
+      resolutionAtRiskNotifiedAt: Date | null;
+    },
+    ticket: {
+      id: string;
+      number: number;
+      displayId: string | null;
+      subject: string;
+      status: TicketStatus;
+      priority: TicketPriority;
+      assignedTeamId: string | null;
+      assignedTeam: { name: string } | null;
+    },
+    breachType: BreachType,
+    now: Date,
+    notificationIntents: NotificationIntent[],
+  ) {
+    const dueAt =
+      breachType === 'FIRST_RESPONSE'
+        ? instance.firstResponseDueAt
+        : instance.resolutionDueAt;
+
+    if (!dueAt) {
+      return;
+    }
+
+    const updateResult = await tx.slaInstance.updateMany({
+      where:
+        breachType === 'FIRST_RESPONSE'
+          ? { id: instance.id, firstResponseAtRiskNotifiedAt: null }
+          : { id: instance.id, resolutionAtRiskNotifiedAt: null },
+      data:
+        breachType === 'FIRST_RESPONSE'
+          ? { firstResponseAtRiskNotifiedAt: now }
+          : { resolutionAtRiskNotifiedAt: now },
+    });
+
+    if (updateResult.count === 0) {
+      return;
+    }
+
+    await tx.ticketEvent.create({
+      data: {
+        ticketId: ticket.id,
+        type: 'SLA_AT_RISK',
+        payload: {
+          breachType,
+          dueAt: dueAt.toISOString(),
+          policyId: instance.policyId,
+        },
+        createdById: null,
+      },
+    });
+
+    const leadUsers = await this.loadLeadUsers(tx, ticket.assignedTeamId);
+    const onCallEmails = this.getOnCallEmails();
+
+    if (leadUsers.length === 0 && onCallEmails.length === 0) {
+      return;
+    }
+
+    const breachLabel =
+      breachType === 'FIRST_RESPONSE' ? 'First response' : 'Resolution';
+    const timeRemaining = this.formatTimeRemaining(dueAt.getTime() - now.getTime());
+
+    const subject = `[Ticket ${this.ticketLabel(ticket)}] SLA at risk: ${breachLabel}`;
+    const body = [
+      `SLA at risk: ${breachLabel}`,
+      `Subject: ${ticket.subject}`,
+      `Priority: ${ticket.priority}`,
+      `Status: ${ticket.status}`,
+      `Team: ${ticket.assignedTeam?.name ?? 'Unassigned'}`,
+      `Due: ${dueAt.toISOString()}`,
+      `Time remaining: ${timeRemaining}`,
+      '',
+      `View: ${this.ticketLink(ticket.id)}`,
+    ].join('\n');
+
+    const payload: Prisma.InputJsonValue = {
+      breachType,
+      dueAt: dueAt.toISOString(),
+      priority: ticket.priority,
+      policyId: instance.policyId,
+    };
+
+    notificationIntents.push({
+      kind: 'AT_RISK',
+      leadUsers,
+      onCallEmails,
+      subject,
+      body,
+      ticketSubject: ticket.subject,
+      timeRemaining,
       ticketId: ticket.id,
       payload,
     });
@@ -394,19 +556,37 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
    */
   private async dispatchNotification(intent: NotificationIntent) {
     try {
+      const eventType = intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_AT_RISK';
+
       if (intent.leadUsers.length > 0) {
         await this.notifications.notifyUsers(intent.leadUsers, {
-          eventType: 'SLA_BREACHED',
+          eventType,
           subject: intent.subject,
           body: intent.body,
           ticketId: intent.ticketId,
           payload: intent.payload,
         });
+
+        const leadIds = intent.leadUsers.map((user) => user.id);
+        if (intent.kind === 'BREACH') {
+          await this.inAppNotifications.notifySlaBreached(
+            intent.ticketId,
+            leadIds,
+            intent.ticketSubject,
+          );
+        } else if (intent.timeRemaining) {
+          await this.inAppNotifications.notifySlaAtRisk(
+            intent.ticketId,
+            leadIds,
+            intent.ticketSubject,
+            intent.timeRemaining,
+          );
+        }
       }
 
       if (intent.onCallEmails.length > 0) {
         await this.notifications.notifyAddresses(intent.onCallEmails, {
-          eventType: 'SLA_BREACHED',
+          eventType,
           subject: intent.subject,
           body: intent.body,
           ticketId: intent.ticketId,
@@ -414,7 +594,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         });
       }
     } catch (error) {
-      console.error('Failed to dispatch SLA breach notification', error);
+      console.error('Failed to dispatch SLA notification', error);
     }
   }
 
@@ -443,6 +623,47 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       .split(',')
       .map((email) => email.trim())
       .filter(Boolean);
+  }
+
+  private atRiskThresholdMs() {
+    if (this.config.get<string>('SLA_AT_RISK_ENABLED') === 'false') {
+      return 0;
+    }
+
+    const minutes = Number(
+      this.config.get<string>('SLA_AT_RISK_THRESHOLD_MINUTES') ?? '120',
+    );
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      return 0;
+    }
+
+    return minutes * 60 * 1000;
+  }
+
+  private formatTimeRemaining(ms: number) {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return 'Less than 1 minute';
+    }
+
+    const totalMinutes = Math.max(1, Math.round(ms / 60000));
+    const minutes = totalMinutes % 60;
+    const totalHours = Math.floor(totalMinutes / 60);
+    const hours = totalHours % 24;
+    const days = Math.floor(totalHours / 24);
+
+    const parts: string[] = [];
+    if (days > 0) {
+      parts.push(`${days}d`);
+    }
+    if (hours > 0) {
+      parts.push(`${hours}h`);
+    }
+    if (minutes > 0 && days === 0) {
+      parts.push(`${minutes}m`);
+    }
+
+    return parts.length > 0 ? parts.join(' ') : 'Less than 1 minute';
   }
 
   private async applyPriorityBump(

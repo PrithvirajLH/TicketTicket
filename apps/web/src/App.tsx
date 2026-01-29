@@ -128,6 +128,13 @@ function App() {
     [currentEmail]
   );
 
+  useEffect(() => {
+    const isValid = personas.some((persona) => persona.email === currentEmail);
+    if (!isValid) {
+      setCurrentEmail(personas[0].email);
+    }
+  }, [currentEmail, personas]);
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') {
       return false;

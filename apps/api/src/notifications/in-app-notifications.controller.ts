@@ -7,7 +7,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
-import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthUser } from '../auth/current-user.decorator';
 import { ListNotificationsDto } from './dto/list-notifications.dto';
 import { InAppNotificationsService } from './in-app-notifications.service';
 

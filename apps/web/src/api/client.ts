@@ -609,3 +609,41 @@ export function markAllNotificationsAsRead() {
     method: 'PATCH'
   });
 }
+
+// ============================================
+// Bulk ticket actions
+// ============================================
+
+export type BulkResult = {
+  success: number;
+  failed: number;
+  errors: Array<{ ticketId: string; message: string }>;
+};
+
+export function bulkAssignTickets(ticketIds: string[], assigneeId?: string) {
+  return apiFetch<BulkResult>('/tickets/bulk/assign', {
+    method: 'POST',
+    body: JSON.stringify({ ticketIds, assigneeId })
+  });
+}
+
+export function bulkTransferTickets(ticketIds: string[], newTeamId: string, assigneeId?: string) {
+  return apiFetch<BulkResult>('/tickets/bulk/transfer', {
+    method: 'POST',
+    body: JSON.stringify({ ticketIds, newTeamId, assigneeId })
+  });
+}
+
+export function bulkStatusTickets(ticketIds: string[], status: string) {
+  return apiFetch<BulkResult>('/tickets/bulk/status', {
+    method: 'POST',
+    body: JSON.stringify({ ticketIds, status })
+  });
+}
+
+export function bulkPriorityTickets(ticketIds: string[], priority: string) {
+  return apiFetch<BulkResult>('/tickets/bulk/priority', {
+    method: 'POST',
+    body: JSON.stringify({ ticketIds, priority })
+  });
+}

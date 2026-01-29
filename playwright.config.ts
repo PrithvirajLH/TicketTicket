@@ -37,7 +37,12 @@ const serverEnv = {
   ...testEnv,
   NODE_ENV: 'test',
   SEED_MODE: 'test',
-  VITE_E2E_MODE: 'true'
+  VITE_E2E_MODE: 'true',
+  NOTIFICATIONS_QUEUE_ENABLED: 'false',
+  SLA_BREACH_WORKER_ENABLED: 'true',
+  SLA_BREACH_INTERVAL_MS: '1000',
+  SLA_AT_RISK_ENABLED: 'true',
+  SLA_AT_RISK_THRESHOLD_MINUTES: '120'
 };
 
 export default defineConfig({

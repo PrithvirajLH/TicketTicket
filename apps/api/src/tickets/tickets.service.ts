@@ -25,6 +25,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
+import { BulkAssignDto } from './dto/bulk-assign.dto';
+import { BulkPriorityDto } from './dto/bulk-priority.dto';
+import { BulkStatusDto } from './dto/bulk-status.dto';
+import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
@@ -658,6 +662,124 @@ export class TicketsService {
     );
 
     return updated;
+  }
+
+  /** Bulk assign tickets. assigneeId optional = assign to self. */
+  async bulkAssign(payload: BulkAssignDto, user: AuthUser) {
+    const results = { success: 0, failed: 0, errors: [] as { ticketId: string; message: string }[] };
+    for (const ticketId of payload.ticketIds) {
+      try {
+        await this.assign(ticketId, { assigneeId: payload.assigneeId }, user);
+        results.success++;
+      } catch (err: unknown) {
+        results.failed++;
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        results.errors.push({ ticketId, message });
+      }
+    }
+    return results;
+  }
+
+  /** Bulk transfer tickets to a team. */
+  async bulkTransfer(payload: BulkTransferDto, user: AuthUser) {
+    const results = { success: 0, failed: 0, errors: [] as { ticketId: string; message: string }[] };
+    for (const ticketId of payload.ticketIds) {
+      try {
+        await this.transfer(ticketId, { newTeamId: payload.newTeamId, assigneeId: payload.assigneeId }, user);
+        results.success++;
+      } catch (err: unknown) {
+        results.failed++;
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        results.errors.push({ ticketId, message });
+      }
+    }
+    return results;
+  }
+
+  /** Bulk transition tickets to a status. */
+  async bulkStatus(payload: BulkStatusDto, user: AuthUser) {
+    const results = { success: 0, failed: 0, errors: [] as { ticketId: string; message: string }[] };
+    for (const ticketId of payload.ticketIds) {
+      try {
+        await this.transition(ticketId, { status: payload.status }, user);
+        results.success++;
+      } catch (err: unknown) {
+        results.failed++;
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        results.errors.push({ ticketId, message });
+      }
+    }
+    return results;
+  }
+
+  /** Bulk update ticket priority. Updates ticket, records event, and resyncs SLA instance. */
+  async bulkPriority(payload: BulkPriorityDto, user: AuthUser) {
+    if (user.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('Requesters cannot change ticket priority');
+    }
+
+    const results = { success: 0, failed: 0, errors: [] as { ticketId: string; message: string }[] };
+    for (const ticketId of payload.ticketIds) {
+      const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+      if (!ticket) {
+        results.failed++;
+        results.errors.push({ ticketId, message: 'Ticket not found' });
+        continue;
+      }
+      if (!this.canWriteTicket(user, ticket)) {
+        results.failed++;
+        results.errors.push({ ticketId, message: 'No write access' });
+        continue;
+      }
+      // getSlaConfig always returns a config object (team policy or default); never null
+      const oldSla = await this.getSlaConfig(ticket.priority, ticket.assignedTeamId);
+      const newSla = await this.getSlaConfig(payload.priority, ticket.assignedTeamId);
+
+      // Derive SLA start from current cycle so reopened/paused tickets and due dates are preserved
+      const firstStart =
+        ticket.firstResponseDueAt
+          ? this.addHours(ticket.firstResponseDueAt, -oldSla.firstResponseHours)
+          : ticket.createdAt;
+      const resolutionStart =
+        ticket.dueAt
+          ? this.addHours(ticket.dueAt, -oldSla.resolutionHours)
+          : ticket.createdAt;
+
+      const firstResponseDueAt = this.addHours(firstStart, newSla.firstResponseHours);
+      const dueAt = this.addHours(resolutionStart, newSla.resolutionHours);
+
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.ticket.update({
+            where: { id: ticketId },
+            data: {
+              priority: payload.priority,
+              firstResponseDueAt,
+              dueAt,
+            },
+          });
+          await tx.ticketEvent.create({
+            data: {
+              ticketId,
+              type: 'TICKET_PRIORITY_CHANGED',
+              payload: { from: ticket.priority, to: payload.priority },
+              createdById: user.id,
+            },
+          });
+          await this.slaEngine.syncFromTicket(
+            ticketId,
+            { policyId: newSla.policyId ?? null },
+            tx,
+          );
+        });
+        results.success++;
+      } catch (err: unknown) {
+        results.failed++;
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        results.errors.push({ ticketId, message });
+      }
+    }
+    return results;
   }
 
   async listFollowers(ticketId: string, user: AuthUser) {

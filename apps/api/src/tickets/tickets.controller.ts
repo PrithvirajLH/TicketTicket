@@ -14,6 +14,10 @@ import type { Express } from 'express';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
+import { BulkAssignDto } from './dto/bulk-assign.dto';
+import { BulkPriorityDto } from './dto/bulk-priority.dto';
+import { BulkStatusDto } from './dto/bulk-status.dto';
+import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
@@ -41,6 +45,38 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.create(payload, user);
+  }
+
+  @Post('bulk/assign')
+  async bulkAssign(
+    @Body() payload: BulkAssignDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.bulkAssign(payload, user);
+  }
+
+  @Post('bulk/transfer')
+  async bulkTransfer(
+    @Body() payload: BulkTransferDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.bulkTransfer(payload, user);
+  }
+
+  @Post('bulk/status')
+  async bulkStatus(
+    @Body() payload: BulkStatusDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.bulkStatus(payload, user);
+  }
+
+  @Post('bulk/priority')
+  async bulkPriority(
+    @Body() payload: BulkPriorityDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.bulkPriority(payload, user);
   }
 
   @Post(':id/messages')

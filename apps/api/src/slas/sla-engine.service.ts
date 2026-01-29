@@ -94,10 +94,12 @@ export class SlaEngineService {
 
     if (options?.resetResolution) {
       updateData.resolutionBreachedAt = null;
+      updateData.resolutionAtRiskNotifiedAt = null;
     }
 
     if (options?.resetFirstResponse) {
       updateData.firstResponseBreachedAt = null;
+      updateData.firstResponseAtRiskNotifiedAt = null;
     }
 
     // Use existing policyId if we didn't resolve a new one and one exists
