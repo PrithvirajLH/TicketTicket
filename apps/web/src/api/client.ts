@@ -544,3 +544,68 @@ export async function searchAll(
     teams: filteredTeams
   };
 }
+
+// ============================================
+// Notification types and functions
+// ============================================
+
+export type NotificationRecord = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+  ticket?: {
+    id: string;
+    number: number;
+    displayId: string | null;
+    subject: string;
+  } | null;
+  actor?: UserRef | null;
+};
+
+export type NotificationListResponse = {
+  data: NotificationRecord[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    unreadCount: number;
+  };
+};
+
+export function fetchNotifications(params?: {
+  page?: number;
+  pageSize?: number;
+  unreadOnly?: boolean;
+}) {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        query.append(key, String(value));
+      }
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<NotificationListResponse>(`/notifications${suffix}`);
+}
+
+export function fetchUnreadNotificationCount() {
+  return apiFetch<{ count: number }>('/notifications/unread-count');
+}
+
+export function markNotificationAsRead(notificationId: string) {
+  return apiFetch<{ success: boolean }>(`/notifications/${notificationId}/read`, {
+    method: 'PATCH'
+  });
+}
+
+export function markAllNotificationsAsRead() {
+  return apiFetch<{ success: boolean; count: number }>('/notifications/read-all', {
+    method: 'PATCH'
+  });
+}

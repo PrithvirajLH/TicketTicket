@@ -5,6 +5,7 @@ import type { TicketMessage, User } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from './email-queue.service';
+import { InAppNotificationsService } from './in-app-notifications.service';
 import { OutboxService } from './outbox.service';
 
 type RecipientOptions = {
@@ -22,6 +23,7 @@ export class NotificationsService {
     private readonly outbox: OutboxService,
     private readonly emailQueue: EmailQueueService,
     private readonly config: ConfigService,
+    private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
   async ticketCreated(ticket: { id: string }, actor: AuthUser) {
@@ -92,6 +94,7 @@ export class NotificationsService {
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
 
+    // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'MESSAGE_ADDED',
       subject,
@@ -102,6 +105,16 @@ export class NotificationsService {
         type: message.type,
       },
     });
+
+    // Create in-app notifications
+    const recipientIds = recipients.map((r) => r.id);
+    await this.inAppNotifications.notifyNewMessage(
+      fullTicket.id,
+      recipientIds,
+      actor.id,
+      fullTicket.subject,
+      isInternal,
+    ).catch((error) => console.error('Failed to create in-app notification', error));
   }
 
   async ticketAssigned(ticket: { id: string }, actor: AuthUser) {
@@ -125,6 +138,7 @@ export class NotificationsService {
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
 
+    // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'TICKET_ASSIGNED',
       subject,
@@ -134,6 +148,16 @@ export class NotificationsService {
         assigneeId: fullTicket.assigneeId,
       },
     });
+
+    // Create in-app notification for assignee
+    if (fullTicket.assigneeId) {
+      await this.inAppNotifications.notifyTicketAssigned(
+        fullTicket.id,
+        fullTicket.assigneeId,
+        actor.id,
+        fullTicket.subject,
+      ).catch((error) => console.error('Failed to create in-app notification', error));
+    }
   }
 
   async ticketTransferred(
@@ -163,6 +187,7 @@ export class NotificationsService {
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
 
+    // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'TICKET_TRANSFERRED',
       subject,
@@ -173,6 +198,16 @@ export class NotificationsService {
         toTeamId: fullTicket.assignedTeamId,
       },
     });
+
+    // Create in-app notifications
+    const recipientIds = recipients.map((r) => r.id);
+    await this.inAppNotifications.notifyTicketTransferred(
+      fullTicket.id,
+      recipientIds,
+      actor.id,
+      fullTicket.subject,
+      fullTicket.assignedTeam?.name ?? 'Unassigned',
+    ).catch((error) => console.error('Failed to create in-app notification', error));
   }
 
   async ticketStatusChanged(
@@ -199,6 +234,7 @@ export class NotificationsService {
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
 
+    // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'TICKET_STATUS_CHANGED',
       subject,
@@ -209,6 +245,17 @@ export class NotificationsService {
         to: fullTicket.status,
       },
     });
+
+    // Create in-app notifications for resolved tickets
+    if (fullTicket.status === TicketStatus.RESOLVED || fullTicket.status === TicketStatus.CLOSED) {
+      const recipientIds = recipients.map((r) => r.id);
+      await this.inAppNotifications.notifyTicketResolved(
+        fullTicket.id,
+        recipientIds,
+        actor.id,
+        fullTicket.subject,
+      ).catch((error) => console.error('Failed to create in-app notification', error));
+    }
   }
 
   async notifyUsers(

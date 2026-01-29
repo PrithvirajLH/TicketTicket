@@ -19,6 +19,7 @@ import { CreateTicketModal, type CreateTicketForm } from './components/CreateTic
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { useCommandPalette } from './hooks/useCommandPalette';
+import { useNotifications } from './hooks/useNotifications';
 import { DashboardPage } from './pages/DashboardPage';
 import { ManagerViewsPage } from './pages/ManagerViewsPage';
 import { SlaSettingsPage } from './pages/SlaSettingsPage';
@@ -146,6 +147,14 @@ function App() {
   // Command Palette state with Cmd+N shortcut for new ticket
   const commandPalette = useCommandPalette({
     onCreateTicket: () => setShowCreateModal(true)
+  });
+
+  // Notifications state with polling
+  // Pass currentEmail as userKey to reset notifications on persona switch
+  const notifications = useNotifications({
+    pollingInterval: 30000, // 30 seconds
+    enablePolling: true,
+    userKey: currentEmail
   });
 
   const [createForm, setCreateForm] = useState<CreateTicketForm>({
@@ -350,6 +359,16 @@ function App() {
             onEmailChange={setCurrentEmail}
             onCreateTicket={() => setShowCreateModal(true)}
             onOpenSearch={commandPalette.open}
+            notificationProps={{
+              notifications: notifications.notifications,
+              unreadCount: notifications.unreadCount,
+              loading: notifications.loading,
+              hasMore: notifications.hasMore,
+              onLoadMore: notifications.loadMore,
+              onMarkAsRead: notifications.markAsRead,
+              onMarkAllAsRead: notifications.markAllAsRead,
+              onRefresh: notifications.refresh
+            }}
           />
 
           <Routes>

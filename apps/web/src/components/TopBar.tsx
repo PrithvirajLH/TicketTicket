@@ -1,4 +1,17 @@
 import { Plus, Search } from 'lucide-react';
+import type { NotificationRecord } from '../api/client';
+import { NotificationCenter } from './NotificationCenter';
+
+type NotificationProps = {
+  notifications: NotificationRecord[];
+  unreadCount: number;
+  loading: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  onMarkAsRead: (id: string) => void;
+  onMarkAllAsRead: () => void;
+  onRefresh: () => void;
+};
 
 export function TopBar({
   title,
@@ -8,7 +21,8 @@ export function TopBar({
   personas,
   onEmailChange,
   onCreateTicket,
-  onOpenSearch
+  onOpenSearch,
+  notificationProps
 }: {
   title: string;
   subtitle: string;
@@ -18,6 +32,7 @@ export function TopBar({
   onEmailChange: (email: string) => void;
   onCreateTicket: () => void;
   onOpenSearch?: () => void;
+  notificationProps?: NotificationProps;
 }) {
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -38,6 +53,21 @@ export function TopBar({
             <kbd className="ml-2 px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-xs text-slate-400">⌘K</kbd>
           </button>
         )}
+
+        {/* Notification Center */}
+        {notificationProps && (
+          <NotificationCenter
+            notifications={notificationProps.notifications}
+            unreadCount={notificationProps.unreadCount}
+            loading={notificationProps.loading}
+            hasMore={notificationProps.hasMore}
+            onLoadMore={notificationProps.onLoadMore}
+            onMarkAsRead={notificationProps.onMarkAsRead}
+            onMarkAllAsRead={notificationProps.onMarkAllAsRead}
+            onRefresh={notificationProps.onRefresh}
+          />
+        )}
+
         <span className="hidden lg:inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700">
           Logged in as <span className="ml-1 font-semibold text-slate-900">{currentLabel}</span>
         </span>
