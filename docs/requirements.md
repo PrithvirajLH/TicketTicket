@@ -42,5 +42,5 @@ requirements and scope for Sprint 1 sign-off. It is a living document.
 - Final SLA thresholds per priority and business hours by team.
 - Final categories and subcategories per department.
 - Notification channels beyond email (Teams/Slack) and escalation rules.
+- Teams message intake approach (planned for Sprint 6).
 - Attachment retention and malware scanning provider.
-

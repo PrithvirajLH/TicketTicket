@@ -14,9 +14,11 @@ import {
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { createTicket, fetchTeams, getDemoUserEmail, setDemoUserEmail, type TeamRef } from './api/client';
+import { CommandPalette } from './components/CommandPalette';
 import { CreateTicketModal, type CreateTicketForm } from './components/CreateTicketModal';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
+import { useCommandPalette } from './hooks/useCommandPalette';
 import { DashboardPage } from './pages/DashboardPage';
 import { ManagerViewsPage } from './pages/ManagerViewsPage';
 import { SlaSettingsPage } from './pages/SlaSettingsPage';
@@ -140,6 +142,11 @@ function App() {
   const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
+
+  // Command Palette state with Cmd+N shortcut for new ticket
+  const commandPalette = useCommandPalette({
+    onCreateTicket: () => setShowCreateModal(true)
+  });
 
   const [createForm, setCreateForm] = useState<CreateTicketForm>({
     subject: '',
@@ -342,6 +349,7 @@ function App() {
             personas={personas}
             onEmailChange={setCurrentEmail}
             onCreateTicket={() => setShowCreateModal(true)}
+            onOpenSearch={commandPalette.open}
           />
 
           <Routes>
@@ -466,6 +474,16 @@ function App() {
           </Routes>
         </main>
       </div>
+
+      <CommandPalette
+        isOpen={commandPalette.isOpen}
+        onClose={commandPalette.close}
+        recentSearches={commandPalette.recentSearches}
+        onSearch={commandPalette.addRecentSearch}
+        onClearRecent={commandPalette.clearRecentSearches}
+        onCreateTicket={() => setShowCreateModal(true)}
+        currentRole={currentPersona.role}
+      />
 
       <CreateTicketModal
         open={showCreateModal}

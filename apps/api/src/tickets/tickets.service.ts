@@ -22,6 +22,7 @@ import path from 'path';
 import { AuthUser } from '../auth/current-user.decorator';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SlaEngineService } from '../slas/sla-engine.service';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
@@ -35,6 +36,7 @@ export class TicketsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly slaEngine: SlaEngineService,
   ) {}
 
   private defaultSlaConfig: Record<
@@ -237,6 +239,10 @@ export class TicketsService {
       },
     });
 
+    await this.slaEngine.syncFromTicket(updatedTicket.id, {
+      policyId: sla?.policyId ?? null,
+    });
+
     await this.ensureFollower(ticket.id, requesterId);
     if (ticket.assigneeId) {
       await this.ensureFollower(ticket.id, ticket.assigneeId);
@@ -341,6 +347,8 @@ export class TicketsService {
         where: { id: ticketId },
         data: { firstResponseAt: now },
       });
+
+      await this.slaEngine.syncFromTicket(ticketId);
     }
 
     await this.prisma.ticketEvent.create({
@@ -608,6 +616,17 @@ export class TicketsService {
       updateData.slaPausedAt = null;
     }
 
+    const resetResolutionSla = payload.status === TicketStatus.REOPENED;
+    if (resetResolutionSla) {
+      const sla = await this.getSlaConfig(
+        ticket.priority,
+        ticket.assignedTeamId,
+      );
+      if (sla) {
+        updateData.dueAt = this.addHours(now, sla.resolutionHours);
+      }
+    }
+
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: updateData,
@@ -628,6 +647,10 @@ export class TicketsService {
         },
         createdById: user.id,
       },
+    });
+
+    await this.slaEngine.syncFromTicket(ticket.id, {
+      resetResolution: resetResolutionSla,
     });
 
     await this.safeNotify(() =>
@@ -1046,13 +1069,17 @@ export class TicketsService {
       });
       if (policy) {
         return {
+          policyId: policy.id,
           firstResponseHours: policy.firstResponseHours,
           resolutionHours: policy.resolutionHours,
         };
       }
     }
 
-    return this.defaultSlaConfig[priority];
+    return {
+      policyId: null,
+      ...this.defaultSlaConfig[priority],
+    };
   }
 
   private addHours(date: Date, hours: number) {

@@ -53,7 +53,7 @@ Exit criteria: Routing + attachments + audit flows working.
 
 Sprint 4 (Weeks 7-8): Email Inbound + SLA Engine (NEXT)
 Core deliverables
-- Inbound email parsing + ticket threading tokens.
+- Inbound email parsing + ticket threading tokens. (Deferred to Sprint 5)
 - SLA policy model + per-ticket SLA instance creation/updates.
 - Breach detection worker + escalation actions.
 - Edge cases: reopen on reply, waiting statuses, transfer effects.
@@ -68,12 +68,14 @@ Sprint 5 (Weeks 9-10): Reporting + Performance Hardening
 - DB index tuning + caching for ticket list endpoints.
 - Rate limiting, idempotency keys, concurrency control.
 - Security review: access checks, audit coverage, retention plan draft.
+- Inbound email intake (parsing + threading + attachments).
 
 Sprint 6 (Weeks 11-12): UAT, Rollout, Stabilization
 - UAT per team, bug fixes.
 - Training + admin handbook + runbooks.
 - Prod cutover plan + monitoring alerts.
 - 30-day stabilization with weekly metrics review.
+- Teams message intake (create tickets from Teams messages).
 
 Key Functional Requirements to Validate During Sprints
 - Ticket lifecycle statuses: New, Triaged, Assigned, In Progress, Waiting on Requester,

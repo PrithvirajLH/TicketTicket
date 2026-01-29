@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchTickets, type TicketRecord } from '../api/client';
 import type { DashboardStats } from '../types';
-import { formatDate, formatStatus } from '../utils/format';
+import { formatDate, formatStatus, statusBadgeClass } from '../utils/format';
 
 export function DashboardPage({ refreshKey }: { refreshKey: number }) {
   const navigate = useNavigate();
@@ -100,11 +100,18 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
             >
               <div>
                 <p className="text-sm font-medium text-slate-900">{ticket.subject}</p>
-                <p className="text-xs text-slate-600">
-                  {ticket.assignedTeam?.name ?? 'Unassigned'} · {formatStatus(ticket.status)}
+                <p className="mt-1 text-xs text-slate-600">
+                  {ticket.assignedTeam?.name ?? 'Unassigned'}
                 </p>
               </div>
-              <span className="text-xs text-slate-500">{formatDate(ticket.updatedAt)}</span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusBadgeClass(ticket.status)}`}
+                >
+                  {formatStatus(ticket.status)}
+                </span>
+                <span className="text-xs text-slate-500">{formatDate(ticket.updatedAt)}</span>
+              </div>
             </button>
           ))}
         </div>

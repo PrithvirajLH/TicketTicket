@@ -211,6 +211,53 @@ export class NotificationsService {
     });
   }
 
+  async notifyUsers(
+    recipients: User[],
+    details: {
+      subject: string;
+      body: string;
+      eventType: string;
+      ticketId?: string;
+      payload?: Prisma.InputJsonValue;
+    },
+  ) {
+    await this.queueEmails(recipients, details);
+  }
+
+  async notifyAddresses(
+    addresses: string[],
+    details: {
+      subject: string;
+      body: string;
+      eventType: string;
+      ticketId?: string;
+      payload?: Prisma.InputJsonValue;
+    },
+  ) {
+    const deduped = Array.from(
+      new Set(addresses.map((address) => address.trim()).filter(Boolean)),
+    );
+
+    const tasks = deduped.map((email) =>
+      this.outbox
+        .createEmail({
+          toEmail: email,
+          toUserId: null,
+          ticketId: details.ticketId,
+          subject: details.subject,
+          body: details.body,
+          eventType: details.eventType,
+          payload: details.payload ?? null,
+        })
+        .then((outbox) => this.emailQueue.enqueue(outbox.id))
+        .catch((error) => {
+          console.error('Failed to queue email', error);
+        }),
+    );
+
+    await Promise.all(tasks);
+  }
+
   private async loadTicket(ticketId: string) {
     return this.prisma.ticket.findUnique({
       where: { id: ticketId },

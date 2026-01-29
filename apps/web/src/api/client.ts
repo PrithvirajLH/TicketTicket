@@ -156,6 +156,11 @@ export function setDemoUserEmail(email: string) {
   if (typeof window === 'undefined') {
     return;
   }
+  const currentEmail = window.localStorage.getItem('demoUserEmail');
+  if (currentEmail !== email) {
+    // Clear search cache when persona changes to prevent leaking privileged data
+    clearSearchCache();
+  }
   window.localStorage.setItem('demoUserEmail', email);
 }
 
@@ -411,4 +416,131 @@ export function deleteRoutingRule(id: string) {
   return apiFetch<{ id: string }>(`/routing-rules/${id}`, {
     method: 'DELETE'
   });
+}
+
+// Search types and function
+export type SearchResults = {
+  tickets: Array<{
+    id: string;
+    number: number;
+    displayId?: string | null;
+    subject: string;
+    status: string;
+    priority: string;
+    assignedTeam?: TeamRef | null;
+  }>;
+  users: UserRef[];
+  teams: TeamRef[];
+};
+
+// Cache for users and teams to avoid hammering the API on every keystroke
+// Keyed by user email to prevent leaking data across persona switches
+let cachedUsers: UserRef[] | null = null;
+let cachedTeams: TeamRef[] | null = null;
+let usersCacheTime = 0;
+let teamsCacheTime = 0;
+let cacheUserEmail: string | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function clearSearchCache() {
+  cachedUsers = null;
+  cachedTeams = null;
+  usersCacheTime = 0;
+  teamsCacheTime = 0;
+  cacheUserEmail = null;
+}
+
+/**
+ * Check if cache is valid for current user, clear if user changed
+ */
+function validateCacheUser(): void {
+  const currentEmail = getDemoUserEmail();
+  if (cacheUserEmail !== null && cacheUserEmail !== currentEmail) {
+    // User changed, clear cache to prevent leaking privileged data
+    clearSearchCache();
+  }
+  cacheUserEmail = currentEmail;
+}
+
+async function getCachedUsers(): Promise<UserRef[]> {
+  validateCacheUser();
+  const now = Date.now();
+  if (cachedUsers && now - usersCacheTime < CACHE_TTL_MS) {
+    return cachedUsers;
+  }
+  try {
+    const response = await fetchUsers();
+    cachedUsers = response.data;
+    usersCacheTime = now;
+    return cachedUsers;
+  } catch {
+    // Return cached data if available, empty array otherwise
+    return cachedUsers ?? [];
+  }
+}
+
+async function getCachedTeams(): Promise<TeamRef[]> {
+  validateCacheUser();
+  const now = Date.now();
+  if (cachedTeams && now - teamsCacheTime < CACHE_TTL_MS) {
+    return cachedTeams;
+  }
+  try {
+    const response = await fetchTeams();
+    cachedTeams = response.data;
+    teamsCacheTime = now;
+    return cachedTeams;
+  } catch {
+    // Return cached data if available, empty array otherwise
+    return cachedTeams ?? [];
+  }
+}
+
+export async function searchAll(
+  query: string,
+  signal?: AbortSignal
+): Promise<SearchResults> {
+  // Check if aborted before starting
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
+  // Perform parallel searches across tickets, users (cached), and teams (cached)
+  const [ticketsResponse, users, teams] = await Promise.all([
+    fetchTickets({ q: query, pageSize: 5 }).catch(() => ({ data: [] })),
+    getCachedUsers(),
+    getCachedTeams()
+  ]);
+
+  // Check if aborted after fetching
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
+  // Filter users and teams client-side based on query
+  const loweredQuery = query.toLowerCase();
+  
+  const filteredUsers = users.filter(
+    (user) =>
+      user.displayName.toLowerCase().includes(loweredQuery) ||
+      user.email.toLowerCase().includes(loweredQuery)
+  ).slice(0, 5);
+
+  const filteredTeams = teams.filter(
+    (team) => team.name.toLowerCase().includes(loweredQuery)
+  ).slice(0, 5);
+
+  return {
+    tickets: ticketsResponse.data.map((t) => ({
+      id: t.id,
+      number: t.number,
+      displayId: t.displayId,
+      subject: t.subject,
+      status: t.status,
+      priority: t.priority,
+      assignedTeam: t.assignedTeam
+    })),
+    users: filteredUsers,
+    teams: filteredTeams
+  };
 }

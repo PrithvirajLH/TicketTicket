@@ -34,8 +34,8 @@ export function Sidebar({
         </div>
         {!collapsed && (
           <div>
-            <p className="text-sm font-semibold text-slate-900">Unified Support</p>
-            <p className="text-xs text-slate-600">Enterprise Desk</p>
+            <p className="text-sm font-semibold text-slate-900">CSNHC</p>
+            <p className="text-xs text-slate-600">Service Desk</p>
           </div>
         )}
       </div>

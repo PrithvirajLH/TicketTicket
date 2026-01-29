@@ -147,6 +147,7 @@ test('agent assigns and transitions a ticket', async ({ page, request }) => {
   await assignRow.getByRole('button', { name: 'Assign', exact: true }).click();
   await waitForStatus(request, ticket.id, AGENT_EMAIL, 'ASSIGNED');
 
+  await page.getByRole('button', { name: 'Status tab' }).click();
   const statusRow = page.getByRole('button', { name: 'Update status' }).locator('..');
   await statusRow.locator('select').selectOption({ label: 'In Progress' });
   await page.getByRole('button', { name: 'Update status' }).click();
@@ -204,7 +205,8 @@ test('lead can transfer ticket and becomes read-only', async ({ page, request })
   await openAs(page, LEAD_EMAIL, `/tickets/${ticket.id}`);
   await waitForTicketOverview(page);
 
-  const transferCard = page.getByRole('button', { name: 'Transfer', exact: true }).locator('..').locator('..');
+  await page.getByRole('button', { name: 'Transfer tab' }).click();
+  const transferCard = page.getByRole('button', { name: 'Transfer', exact: true }).locator('..');
   const teamSelect = transferCard.locator('select').first();
   await waitForSelectOption(teamSelect, 'HR Operations');
   await teamSelect.selectOption({ label: 'HR Operations' });

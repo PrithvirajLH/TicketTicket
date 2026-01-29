@@ -181,6 +181,7 @@ model Ticket {
   followers      TicketFollower[]
   attachments    Attachment[]
   notificationOutbox NotificationOutbox[]
+  slaInstance    SlaInstance?
 }
 
 model TicketMessage {
@@ -243,8 +244,29 @@ model SlaPolicy {
   updatedAt          DateTime       @updatedAt
 
   team               Team           @relation(fields: [teamId], references: [id])
+  instances          SlaInstance[]
 
   @@unique([teamId, priority])
+}
+
+model SlaInstance {
+  id                    String         @id @default(uuid())
+  ticketId              String         @unique
+  policyId              String?
+  priority              TicketPriority
+  firstResponseDueAt    DateTime?
+  resolutionDueAt       DateTime?
+  pausedAt              DateTime?
+  nextDueAt             DateTime?
+  firstResponseBreachedAt DateTime?
+  resolutionBreachedAt  DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  ticket                Ticket         @relation(fields: [ticketId], references: [id])
+  policy                SlaPolicy?     @relation(fields: [policyId], references: [id])
+
+  @@index([nextDueAt])
 }
 
 model TicketFollower {
