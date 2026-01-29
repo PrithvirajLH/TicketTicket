@@ -16,9 +16,11 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { createTicket, fetchTeams, getDemoUserEmail, setDemoUserEmail, type TeamRef } from './api/client';
 import { CommandPalette } from './components/CommandPalette';
 import { CreateTicketModal, type CreateTicketForm } from './components/CreateTicketModal';
+import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { useCommandPalette } from './hooks/useCommandPalette';
+import { getShortcutContext, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotifications } from './hooks/useNotifications';
 import { DashboardPage } from './pages/DashboardPage';
 import { ManagerViewsPage } from './pages/ManagerViewsPage';
@@ -163,6 +165,10 @@ function App() {
     enablePolling: true,
     userKey: currentEmail
   });
+
+  // Keyboard shortcuts: ? (help), Cmd+/ (focus search)
+  const keyboardShortcuts = useKeyboardShortcuts();
+  const shortcutContext = getShortcutContext(location.pathname);
 
   const [createForm, setCreateForm] = useState<CreateTicketForm>({
     subject: '',
@@ -509,6 +515,12 @@ function App() {
         onClearRecent={commandPalette.clearRecentSearches}
         onCreateTicket={() => setShowCreateModal(true)}
         currentRole={currentPersona.role}
+      />
+
+      <KeyboardShortcutsHelp
+        open={keyboardShortcuts.showHelp}
+        onClose={keyboardShortcuts.closeHelp}
+        context={shortcutContext}
       />
 
       <CreateTicketModal

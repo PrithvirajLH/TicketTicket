@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Info } from 'lucide-react';
 import {
   addTicketMessage,
@@ -64,6 +64,9 @@ export function TicketDetailPage({
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const statusSelectRef = useRef<HTMLSelectElement | null>(null);
+  const navigate = useNavigate();
   const statusEvents = ticket ? ticket.events.filter((event) => event.type === 'TICKET_STATUS_CHANGED') : [];
   const followers = ticket?.followers ?? [];
   const isFollowing = followers.some((follower) => follower.user.email === currentEmail);
@@ -134,6 +137,58 @@ export function TicketDetailPage({
       setMessageType('PUBLIC');
     }
   }, [role]);
+
+  // Ticket detail keyboard shortcuts: R (focus reply), A (assign to me), S (status), Escape (go back)
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      // Don't run if a modal (palette, shortcuts help, etc.) already handled the event
+      if (event.defaultPrevented) return;
+
+      // Don't run when a modal is open (Esc should close modal, not navigate)
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+
+      const target = event.target as HTMLElement;
+      const isInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable;
+      // Shortcuts don't fire when typing (including Escape in reply textarea)
+      if (isInput) return;
+
+      switch (event.key) {
+        case 'r':
+        case 'R':
+          if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault();
+            replyTextareaRef.current?.focus();
+          }
+          break;
+        case 'a':
+        case 'A':
+          if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage && !ticket?.assignee) {
+            event.preventDefault();
+            handleAssignSelf();
+          }
+          break;
+        case 's':
+        case 'S':
+          if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage) {
+            event.preventDefault();
+            statusSelectRef.current?.focus();
+          }
+          break;
+        case 'Escape':
+          event.preventDefault();
+          navigate(-1);
+          break;
+        default:
+          break;
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canManage, ticket?.assignee, navigate]);
 
   async function loadTicketDetail(id: string) {
     setLoadingDetail(true);
@@ -501,6 +556,7 @@ export function TicketDetailPage({
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <textarea
+                      ref={replyTextareaRef}
                       className="flex-1 rounded-2xl border border-slate-200 bg-white/80 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                       rows={2}
                       placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
@@ -770,6 +826,7 @@ export function TicketDetailPage({
                   </div>
                   <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                     <select
+                      ref={statusSelectRef}
                       className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                       value={nextStatus}
                       onChange={(event) => setNextStatus(event.target.value)}

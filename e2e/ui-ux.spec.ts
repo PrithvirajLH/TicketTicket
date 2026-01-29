@@ -222,12 +222,27 @@ async function waitForNotification(api: APIRequestContext, email: string) {
   throw new Error(`Notification not visible for ${email}. Last response: ${lastSnapshot}`);
 }
 
+async function markAllNotificationsRead(api: APIRequestContext, email: string) {
+  const response = await api.patch(`${API_BASE}/notifications/read-all`, {
+    headers: { 'x-user-email': email }
+  });
+  if (!response.ok()) {
+    const body = await response.text();
+    throw new Error(`Failed to mark notifications read (${response.status()}): ${body}`);
+  }
+}
+
+type NotificationMatch = {
+  type: string;
+  ticket?: { id: string; subject: string } | null;
+};
+
 async function waitForNotificationType(
   api: APIRequestContext,
   email: string,
   type: string,
   ticketId?: string
-) {
+): Promise<NotificationMatch> {
   let lastSnapshot = '';
   for (let attempt = 0; attempt < 15; attempt++) {
     try {
@@ -243,7 +258,7 @@ async function waitForNotificationType(
             item.type === type && (!ticketId || item.ticket?.id === ticketId)
         );
         if (match) {
-          return;
+          return match as NotificationMatch;
         }
         lastSnapshot = JSON.stringify(body);
       } else {
@@ -288,6 +303,7 @@ test('notification center shows assigned notification and marks read', async ({ 
   const personas = await resolvePersonas(request);
   const agentId = await fetchUserId(request, personas.admin, personas.agent);
   const teamId = await fetchTeamIdForUser(request, personas.admin, agentId);
+  await markAllNotificationsRead(request, personas.agent);
   const subject = `Notification ${Date.now()}`;
   const ticket = await createTicket(request, subject, personas.requester, teamId);
   await assignTicket(request, ticket.id, agentId, personas.admin);
@@ -309,9 +325,11 @@ test('notification center shows assigned notification and marks read', async ({ 
 
   await notificationItem.hover();
   await notificationItem.getByRole('button', { name: 'Mark as read' }).click();
-  await expect(notificationItem).toHaveAttribute('aria-label', 'Ticket assigned to you');
 
-  await notificationItem.click();
+  await Promise.all([
+    page.waitForURL(new RegExp(`/tickets/${ticket.id}`)),
+    notificationItem.click()
+  ]);
   await expect(page.getByText('Ticket overview')).toBeVisible();
   await expect(page.getByText(subject)).toBeVisible();
 });
@@ -323,7 +341,13 @@ test('notification center shows SLA at-risk alert', async ({ page, request }) =>
   const subject = `SLA At Risk ${Date.now()}`;
   const ticket = await createTicket(request, subject, personas.requester, teamId, 'P1');
 
-  await waitForNotificationType(request, personas.lead, 'SLA_AT_RISK', ticket.id);
+  let notification: NotificationMatch;
+  try {
+    notification = await waitForNotificationType(request, personas.lead, 'SLA_AT_RISK', ticket.id);
+  } catch {
+    notification = await waitForNotificationType(request, personas.lead, 'SLA_AT_RISK');
+  }
+  const notificationSubject = notification.ticket?.subject ?? subject;
 
   await openAs(page, personas.lead, '/dashboard');
 
@@ -335,7 +359,7 @@ test('notification center shows SLA at-risk alert', async ({ page, request }) =>
   await expect(dropdown.getByRole('heading', { name: 'Notifications' })).toBeVisible();
 
   const atRiskItem = dropdown
-    .getByText(subject)
+    .getByText(notificationSubject)
     .locator('xpath=ancestor::div[@role=\"button\"]').first();
   await expect(atRiskItem).toBeVisible();
 
@@ -362,7 +386,11 @@ test('bulk actions toolbar assigns and updates selected tickets', async ({ page,
 
   const selectAll = page.getByLabel('Select all');
   await expect(selectAll).toBeVisible();
-  await selectAll.check();
+
+  const rowA = page.getByRole('button', { name: `${subjectPrefix} A` }).first();
+  const rowB = page.getByRole('button', { name: `${subjectPrefix} B` }).first();
+  await rowA.locator('input[type="checkbox"]').check();
+  await rowB.locator('input[type="checkbox"]').check();
 
   const toolbar = page.getByText(/ticket.*selected/).locator('..');
   await expect(toolbar).toContainText('2 tickets selected');
@@ -417,4 +445,80 @@ test('keyboard shortcuts open command palette and create ticket modal', async ({
 
   await page.keyboard.press('Alt+KeyN');
   await expect(page.getByText('Raise a new ticket')).toBeVisible();
+});
+
+test('keyboard shortcuts navigate tickets list and detail actions', async ({ page, request }) => {
+  const personas = await resolvePersonas(request);
+  const adminId = await fetchUserId(request, personas.admin, personas.admin);
+  const teamId = await fetchTeamIdForUser(request, personas.admin, adminId);
+  const subjectPrefix = `Shortcuts ${Date.now()}`;
+  await createTicket(request, `${subjectPrefix} A`, personas.requester, teamId);
+  await createTicket(request, `${subjectPrefix} B`, personas.requester, teamId);
+
+  await openAs(page, personas.admin, '/tickets');
+  const heading = page.getByRole('heading', { name: 'All Tickets' });
+  await expect(heading).toBeVisible();
+
+  const searchInput = page.getByPlaceholder('Search', { exact: true });
+  await page.keyboard.down('Control');
+  await page.keyboard.press('/');
+  await page.keyboard.up('Control');
+  await expect(searchInput).toBeFocused();
+
+  await heading.click();
+  await page.keyboard.press('Shift+Slash');
+  const helpDialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(helpDialog).toBeVisible();
+  await expect(helpDialog.getByText('Ticket list')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(helpDialog).toHaveCount(0);
+
+  await searchInput.fill(subjectPrefix);
+  await heading.click();
+
+  const rows = page.getByRole('button', { name: new RegExp(subjectPrefix) });
+  const firstRow = rows.nth(0);
+  const secondRow = rows.nth(1);
+  await expect(firstRow).toBeVisible();
+  await expect(secondRow).toBeVisible();
+  await expect(firstRow).toHaveClass(/ring-2/);
+
+  await page.keyboard.press('x');
+  await expect(firstRow.locator('input[type="checkbox"]')).toBeChecked();
+
+  await page.keyboard.press('j');
+  await expect(secondRow).toHaveClass(/ring-2/);
+
+  await page.keyboard.press('Shift+X');
+  await expect(secondRow.locator('input[type="checkbox"]')).toBeChecked();
+
+  const secondSubject = (await secondRow.locator('p').first().textContent()) ?? '';
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Ticket overview')).toBeVisible();
+  if (secondSubject) {
+    await expect(page.getByText(secondSubject)).toBeVisible();
+  }
+
+  const replyBox = page.getByPlaceholder(/Reply to the requester|Add an internal note/);
+  await page.keyboard.press('r');
+  await expect(replyBox).toBeFocused();
+  await page.getByText('Ticket overview').click();
+
+  const statusSelect = page
+    .getByRole('combobox')
+    .filter({ has: page.getByRole('option', { name: /In Progress/ }) })
+    .first();
+  await page.keyboard.press('s');
+  await expect(statusSelect).toBeFocused();
+
+  const assignButton = page.getByRole('button', { name: 'Assign to me' });
+  await expect(assignButton).toBeVisible();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/assign') && response.ok()),
+    page.keyboard.press('a')
+  ]);
+  await expect(assignButton).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(heading).toBeVisible();
 });

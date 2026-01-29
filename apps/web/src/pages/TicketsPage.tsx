@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -13,6 +13,7 @@ import {
   type UserRef
 } from '../api/client';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useTicketSelection } from '../hooks/useTicketSelection';
 import type { Role, SortField, StatusFilter, TicketScope } from '../types';
 import { formatDate, formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
@@ -44,6 +45,17 @@ export function TicketsPage({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [focusedTicketIndex, setFocusedTicketIndex] = useState(0);
+  const [anchorIndex, setAnchorIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const ticketRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const focusedIndexRef = useRef(0);
+
+  useFocusSearchOnShortcut(searchInputRef);
+
+  useEffect(() => {
+    focusedIndexRef.current = focusedTicketIndex;
+  }, [focusedTicketIndex]);
 
   useEffect(() => {
     setStatusFilter(presetStatus);
@@ -158,6 +170,91 @@ export function TicketsPage({
     return bulkPriorityTickets(selection.selectedIds, priority);
   }
 
+  // Clamp focused index when list changes
+  useEffect(() => {
+    const n = filteredTickets.length;
+    if (n === 0) {
+      setFocusedTicketIndex(0);
+      return;
+    }
+    setFocusedTicketIndex((prev) => (prev >= n ? n - 1 : prev));
+  }, [filteredTickets.length]);
+
+  // Ticket list keyboard shortcuts: J, K, Enter, X, Shift+X
+  useEffect(() => {
+    if (filteredTickets.length === 0) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement;
+      const isInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable;
+      if (isInput) return;
+
+      // Don't trigger list shortcuts when modifier keys are held (e.g. Cmd+K = palette, not K = previous)
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      const n = filteredTickets.length;
+      if (n === 0) return;
+
+      switch (event.key) {
+        case 'j':
+        case 'J':
+          if (!event.shiftKey) {
+            event.preventDefault();
+            setFocusedTicketIndex((prev) => (prev + 1 >= n ? prev : prev + 1));
+          }
+          break;
+        case 'k':
+        case 'K':
+          if (!event.shiftKey) {
+            event.preventDefault();
+            setFocusedTicketIndex((prev) => (prev <= 0 ? 0 : prev - 1));
+          }
+          break;
+        case 'Enter':
+          event.preventDefault();
+          const currentIdx = focusedIndexRef.current;
+          const ticket = filteredTickets[currentIdx];
+          if (ticket) navigate(`/tickets/${ticket.id}`);
+          break;
+        case 'x':
+        case 'X':
+          if (event.shiftKey) {
+            event.preventDefault();
+            const currentIdx = focusedIndexRef.current;
+            const from = Math.min(anchorIndex, currentIdx);
+            const to = Math.max(anchorIndex, currentIdx);
+            for (let i = from; i <= to; i++) {
+              const t = filteredTickets[i];
+              if (t && !selection.isSelected(t.id)) selection.toggle(t.id);
+            }
+          } else {
+            event.preventDefault();
+            const currentIdx = focusedIndexRef.current;
+            const focused = filteredTickets[currentIdx];
+            if (focused) {
+              selection.toggle(focused.id);
+              setAnchorIndex(currentIdx);
+            }
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredTickets, anchorIndex, selection, navigate]);
+
+  // Scroll focused ticket into view
+  useEffect(() => {
+    const el = ticketRowRefs.current[focusedTicketIndex];
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [focusedTicketIndex]);
+
   return (
     <section className="mt-8 space-y-6 animate-fade-in">
       {toast && (
@@ -204,6 +301,8 @@ export function TicketsPage({
             <div className="relative">
               <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                ref={searchInputRef}
+                type="text"
                 className="pl-9 pr-4 py-2 rounded-full border border-slate-200 bg-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                 placeholder="Search"
                 value={searchQuery}
@@ -288,10 +387,28 @@ export function TicketsPage({
 
         {!loadingTickets && (
           <div className="mt-4 space-y-3">
-            {filteredTickets.map((ticket) => (
+            {filteredTickets.map((ticket, index) => (
               <div
                 key={ticket.id}
-                className="flex items-center gap-3 w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 transition hover:shadow-soft group"
+                ref={(el) => {
+                  ticketRowRefs.current[index] = el;
+                }}
+                tabIndex={0}
+                role="button"
+                className={`flex items-center gap-3 w-full rounded-2xl border px-4 py-3 transition hover:shadow-soft group outline-none ${
+                  index === focusedTicketIndex
+                    ? 'border-slate-900 ring-2 ring-slate-900 ring-offset-2 bg-white shadow-md'
+                    : 'border-slate-200 bg-white/80'
+                }`}
+                onClick={() => navigate(`/tickets/${ticket.id}`)}
+                onKeyDown={(e) => {
+                  // Ignore when focus is on checkbox/button inside row (e.g. Space toggles checkbox, not navigate)
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/tickets/${ticket.id}`);
+                  }
+                }}
               >
                 {role !== 'EMPLOYEE' && (
                   <label
@@ -307,9 +424,7 @@ export function TicketsPage({
                     />
                   </label>
                 )}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/tickets/${ticket.id}`)}
+                <div
                   className="flex-1 flex items-center justify-between text-left min-w-0"
                 >
                   <div className="min-w-0">
@@ -341,7 +456,7 @@ export function TicketsPage({
                     </span>
                     <span className="text-xs text-slate-400">{formatDate(ticket.createdAt)}</span>
                   </div>
-                </button>
+                </div>
               </div>
             ))}
           </div>

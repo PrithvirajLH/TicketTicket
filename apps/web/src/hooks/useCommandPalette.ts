@@ -76,7 +76,12 @@ export function useCommandPalette(options: UseCommandPaletteOptions = {}) {
       // Don't trigger if user is typing in an input/textarea
       const target = event.target as HTMLElement;
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-      
+
+      // Don't trigger open/create shortcuts when typing (but allow Escape to close palette when its input is focused)
+      if (isInput) {
+        if (!(event.key === 'Escape' && isOpen)) return;
+      }
+
       // Cmd/Ctrl + K to toggle command palette
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
@@ -84,7 +89,15 @@ export function useCommandPalette(options: UseCommandPaletteOptions = {}) {
         return;
       }
 
-      // Alt + N to create new ticket (doesn't conflict with browser shortcuts)
+      // Cmd/Ctrl + N to create new ticket (Task 1.4 acceptance criteria)
+      if ((event.metaKey || event.ctrlKey) && event.key === 'n' && options.onCreateTicket) {
+        event.preventDefault();
+        close(); // Close palette if open
+        options.onCreateTicket();
+        return;
+      }
+
+      // Alt + N to create new ticket (alternative shortcut)
       if (event.altKey && event.key === 'n' && options.onCreateTicket) {
         event.preventDefault();
         close(); // Close palette if open
@@ -100,7 +113,14 @@ export function useCommandPalette(options: UseCommandPaletteOptions = {}) {
       }
 
       // "/" to open (only if not in input and palette is closed)
-      if (event.key === '/' && !isInput && !isOpen) {
+      if (
+        event.key === '/' &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !isInput &&
+        !isOpen
+      ) {
         event.preventDefault();
         open();
         return;

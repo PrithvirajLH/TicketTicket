@@ -33,7 +33,19 @@ export function CreateTicketModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-      <div className="glass-card-strong w-full max-w-xl p-6">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Raise a new ticket"
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        className="glass-card-strong w-full max-w-xl p-6"
+      >
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Raise a new ticket</h3>
