@@ -96,27 +96,32 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       const notificationIntents: NotificationIntent[] = [];
 
       // Use a transaction with advisory lock to ensure only one instance processes
-      // pg_try_advisory_xact_lock is released automatically when transaction ends
-      await this.prisma.$transaction(async (tx) => {
-        const [{ pg_try_advisory_xact_lock: locked }] = await tx.$queryRaw<
-          [{ pg_try_advisory_xact_lock: boolean }]
-        >`SELECT pg_try_advisory_xact_lock(${SLA_BREACH_LOCK_KEY})`;
+      // pg_try_advisory_xact_lock is released automatically when transaction ends.
+      // Use a longer timeout so large batches (many instances × multiple writes) don't hit
+      // the default 5s and cause P2028 (transaction not found).
+      await this.prisma.$transaction(
+        async (tx) => {
+          const [{ pg_try_advisory_xact_lock: locked }] = await tx.$queryRaw<
+            [{ pg_try_advisory_xact_lock: boolean }]
+          >`SELECT pg_try_advisory_xact_lock(${SLA_BREACH_LOCK_KEY})`;
 
-        if (!locked) {
-          return; // Another instance is already processing
-        }
+          if (!locked) {
+            return; // Another instance is already processing
+          }
 
-        const instances = await tx.slaInstance.findMany({
-          where: { nextDueAt: { lte: windowEnd } },
-          orderBy: { nextDueAt: 'asc' },
-          take: batchSize,
-          include: { ticket: { include: { assignedTeam: true } } },
-        });
+          const instances = await tx.slaInstance.findMany({
+            where: { nextDueAt: { lte: windowEnd } },
+            orderBy: { nextDueAt: 'asc' },
+            take: batchSize,
+            include: { ticket: { include: { assignedTeam: true } } },
+          });
 
-        for (const instance of instances) {
-          await this.handleInstance(tx, instance, now, notificationIntents);
-        }
-      });
+          for (const instance of instances) {
+            await this.handleInstance(tx, instance, now, notificationIntents);
+          }
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+      );
 
       // Dispatch notifications after transaction commits successfully
       // This prevents duplicate notifications if transaction rolls back
@@ -138,32 +143,35 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       this.config.get<string>('SLA_BACKFILL_BATCH_SIZE') ?? '50',
     );
 
-    await this.prisma.$transaction(async (tx) => {
-      // Transaction-scoped lock - automatically released when tx ends
-      const [{ pg_try_advisory_xact_lock: locked }] = await tx.$queryRaw<
-        [{ pg_try_advisory_xact_lock: boolean }]
-      >`SELECT pg_try_advisory_xact_lock(${SLA_BACKFILL_LOCK_KEY})`;
+    await this.prisma.$transaction(
+      async (tx) => {
+        // Transaction-scoped lock - automatically released when tx ends
+        const [{ pg_try_advisory_xact_lock: locked }] = await tx.$queryRaw<
+          [{ pg_try_advisory_xact_lock: boolean }]
+        >`SELECT pg_try_advisory_xact_lock(${SLA_BACKFILL_LOCK_KEY})`;
 
-      if (!locked) {
-        return; // Another instance is doing backfill
-      }
+        if (!locked) {
+          return; // Another instance is doing backfill
+        }
 
-      // Find open tickets without an SlaInstance
-      const ticketsWithoutInstance = await tx.ticket.findMany({
-        where: {
-          completedAt: null,
-          slaInstance: null,
-        },
-        select: { id: true },
-        take: backfillBatchSize,
-      });
+        // Find open tickets without an SlaInstance
+        const ticketsWithoutInstance = await tx.ticket.findMany({
+          where: {
+            completedAt: null,
+            slaInstance: null,
+          },
+          select: { id: true },
+          take: backfillBatchSize,
+        });
 
-      // Pass tx to syncFromTicket so all operations use the same connection.
-      // Fail fast: any error aborts the transaction and releases the lock.
-      for (const ticket of ticketsWithoutInstance) {
-        await this.slaEngine.syncFromTicket(ticket.id, undefined, tx);
-      }
-    });
+        // Pass tx to syncFromTicket so all operations use the same connection.
+        // Fail fast: any error aborts the transaction and releases the lock.
+        for (const ticket of ticketsWithoutInstance) {
+          await this.slaEngine.syncFromTicket(ticket.id, undefined, tx);
+        }
+      },
+      { timeout: 60_000, maxWait: 10_000 },
+    );
   }
 
   private async handleInstance(

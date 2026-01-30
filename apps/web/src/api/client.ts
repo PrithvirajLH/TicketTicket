@@ -164,7 +164,7 @@ export function setDemoUserEmail(email: string) {
   window.localStorage.setItem('demoUserEmail', email);
 }
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const email = getDemoUserEmail();
   return email ? { 'x-user-email': email } : {};
 }
@@ -589,7 +589,7 @@ export function fetchNotifications(params?: {
   const query = new URLSearchParams();
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') {
+      if (value !== undefined) {
         query.append(key, String(value));
       }
     });

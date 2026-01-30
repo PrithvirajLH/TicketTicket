@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Copy, Info } from 'lucide-react';
 import {
   addTicketMessage,
   assignTicket,
@@ -17,6 +17,7 @@ import {
   type TicketDetail
 } from '../api/client';
 import type { Role } from '../types';
+import { copyToClipboard } from '../utils/clipboard';
 import { formatDate, formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -63,6 +64,8 @@ export function TicketDetailPage({
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [showAllAttachments, setShowAllAttachments] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -137,6 +140,28 @@ export function TicketDetailPage({
       setMessageType('PUBLIC');
     }
   }, [role]);
+
+  useEffect(() => {
+    if (!copyToast) return;
+    const t = window.setTimeout(() => {
+      setCopyToast(null);
+      setLinkCopied(false);
+    }, 2000);
+    return () => window.clearTimeout(t);
+  }, [copyToast]);
+
+  async function handleCopyLink() {
+    if (!ticketId) return;
+    const url = `${window.location.origin}/tickets/${ticketId}`;
+    const ok = await copyToClipboard(url);
+    if (ok) {
+      setLinkCopied(true);
+      setCopyToast({ message: 'Link copied to clipboard', type: 'success' });
+    } else {
+      setLinkCopied(false);
+      setCopyToast({ message: 'Could not copy link', type: 'error' });
+    }
+  }
 
   // Ticket detail keyboard shortcuts: R (focus reply), A (assign to me), S (status), Escape (go back)
   useEffect(() => {
@@ -409,6 +434,19 @@ export function TicketDetailPage({
 
   return (
     <section className="mt-8 animate-fade-in">
+      {copyToast && (
+        <div className="fixed right-8 top-6 z-50">
+          <div
+            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg ${
+              copyToast.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-rose-200 bg-rose-50 text-rose-700'
+            }`}
+          >
+            {copyToast.message}
+          </div>
+        </div>
+      )}
       <div className="grid gap-6 xl:grid-cols-[1.6fr_0.8fr]">
         <div className="space-y-6">
           {loadingDetail && (
@@ -431,6 +469,19 @@ export function TicketDetailPage({
                     <span className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm">
                       <span className="font-mono tracking-tight">{formatTicketId(ticket)}</span>
                     </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition shrink-0"
+                      aria-label="Copy link"
+                    >
+                      {linkCopied ? (
+                        <Check className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-4 w-4 text-slate-500" />
+                      )}
+                      <span>Copy link</span>
+                    </button>
                   </div>
                 </div>
                 <span
