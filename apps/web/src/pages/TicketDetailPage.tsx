@@ -636,7 +636,7 @@ export function TicketDetailPage({
                     aria-labelledby="tab-timeline"
                     className="flex-1 min-h-0 overflow-y-auto pr-2"
                   >
-                    <ActivityTimeline ticket={ticket} />
+                    <ActivityTimeline ticket={ticket} role={role} />
                   </div>
                 ) : (
                   <div

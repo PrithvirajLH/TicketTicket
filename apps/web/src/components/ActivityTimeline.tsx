@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { TicketDetail, TicketEvent, TicketMessage } from '../api/client';
 import { TimelineEvent } from './TimelineEvent';
@@ -17,28 +17,52 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   SLA_AT_RISK: 'SLA at risk'
 };
 
+function getDateKey(createdAt: string): string {
+  const d = new Date(createdAt);
+  return d.toISOString().slice(0, 10);
+}
+
 type ActivityTimelineProps = {
   ticket: TicketDetail;
+  /** When 'EMPLOYEE', internal note events are excluded from the timeline. */
+  role?: string;
   /** Event type filter: show only these types (empty = all). */
   eventTypeFilter?: string[];
   /** Collapse same-day groups by default. */
   collapseGroups?: boolean;
 };
 
-function getDateKey(createdAt: string): string {
-  const d = new Date(createdAt);
-  return d.toISOString().slice(0, 10);
-}
-
 export function ActivityTimeline({
   ticket,
+  role,
   eventTypeFilter = [],
   collapseGroups = false
 }: ActivityTimelineProps) {
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(() => new Set());
   const [typeFilter, setTypeFilter] = useState<string[]>(eventTypeFilter);
 
-  const events = ticket.events ?? [];
+  const rawEvents = ticket.events ?? [];
+
+  const events = useMemo(() => {
+    if (role !== 'EMPLOYEE') return rawEvents;
+    return rawEvents.filter((e) => {
+      if (e.type !== 'MESSAGE_ADDED') return true;
+      const payloadType = e.payload?.type as string | undefined;
+      return payloadType !== 'INTERNAL';
+    });
+  }, [rawEvents, role]);
+
+  useEffect(() => {
+    setTypeFilter(eventTypeFilter);
+  }, [eventTypeFilter]);
+
+  useEffect(() => {
+    if (collapseGroups && events.length > 0) {
+      setCollapsedDates(new Set(events.map((e) => getDateKey(e.createdAt))));
+    } else if (!collapseGroups) {
+      setCollapsedDates(new Set());
+    }
+  }, [collapseGroups, events]);
 
   const messageById = useMemo(() => {
     const map = new Map<string, TicketMessage>();
@@ -69,6 +93,7 @@ export function ActivityTimeline({
     return groups;
   }, [sortedEvents]);
 
+  // From filtered events only so EMPLOYEE never sees "Message" chip when only internal notes exist
   const uniqueTypes = useMemo(() => {
     const set = new Set(events.map((e) => e.type));
     return Array.from(set).sort();

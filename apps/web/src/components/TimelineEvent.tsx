@@ -68,14 +68,18 @@ function eventLabel(
     }
     case 'TICKET_ASSIGNED': {
       const assigneeId = payload.assigneeId as string | undefined;
-      const assignee =
-        assigneeId && ticket.assignee?.id === assigneeId
-          ? ticket.assignee.displayName ?? ticket.assignee.email
-          : assigneeId
-            ? 'Assignee'
-            : 'Unassigned';
+      const assigneeName =
+        payload.assigneeName != null
+          ? String(payload.assigneeName)
+          : assigneeId && ticket.assignee?.id === assigneeId
+            ? ticket.assignee.displayName ?? ticket.assignee.email
+            : null;
       return {
-        title: assigneeId ? `Assigned to ${assignee}` : 'Unassigned',
+        title: assigneeId
+          ? assigneeName
+            ? `Assigned to ${assigneeName}`
+            : 'Assigned'
+          : 'Unassigned',
         subtitle: `by ${actor}`
       };
     }
@@ -126,7 +130,7 @@ function eventLabel(
 export function TimelineEvent({ event, message, ticket }: TimelineEventProps) {
   const icon = eventIcon(event.type);
   const { title, subtitle } = eventLabel(event, ticket);
-  const isMessage = event.type === 'MESSAGE_ADDED' && message;
+  const messageBody = message?.body;
 
   return (
     <div className="flex gap-3 py-3 first:pt-0">
@@ -143,9 +147,9 @@ export function TimelineEvent({ event, message, ticket }: TimelineEventProps) {
           )}
         </p>
         <p className="text-sm font-medium text-slate-900 mt-0.5">{title}</p>
-        {isMessage && message && (
+        {event.type === 'MESSAGE_ADDED' && messageBody != null && messageBody !== '' && (
           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-700">
-            <MessageBody body={message.body} />
+            <MessageBody body={messageBody} />
           </div>
         )}
       </div>
