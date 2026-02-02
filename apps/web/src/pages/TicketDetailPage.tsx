@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, ChevronUp, Copy, Info } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Copy, Info, ListOrdered, MessageSquare } from 'lucide-react';
 import {
   addTicketMessage,
   ApiError,
@@ -19,6 +19,7 @@ import {
   type TicketMessage
 } from '../api/client';
 import type { Role } from '../types';
+import { ActivityTimeline } from '../components/ActivityTimeline';
 import { MessageBody } from '../components/MessageBody';
 import { RelativeTime } from '../components/RelativeTime';
 import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEditor';
@@ -74,6 +75,7 @@ export function TicketDetailPage({
   const [showAllAttachments, setShowAllAttachments] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [conversationView, setConversationView] = useState<'conversation' | 'timeline'>('conversation');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const replyEditorRef = useRef<RichTextEditorRef | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -535,11 +537,67 @@ export function TicketDetailPage({
           )}
 
           <div className="glass-card p-6 flex flex-col min-h-[640px]">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Conversation</h3>
-              <p className="text-sm text-slate-500">
-                {role === 'EMPLOYEE' ? 'Chat with the assigned agent.' : 'Chat with the requester.'}
-              </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  View
+                </span>
+                <div
+                  role="tablist"
+                  aria-label="Conversation or activity timeline"
+                  className="inline-flex rounded-xl border border-slate-200 bg-slate-100/80 p-1 shadow-inner"
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft' && conversationView === 'timeline') {
+                      e.preventDefault();
+                      setConversationView('conversation');
+                    }
+                    if (e.key === 'ArrowRight' && conversationView === 'conversation') {
+                      e.preventDefault();
+                      setConversationView('timeline');
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={conversationView === 'conversation'}
+                    aria-controls="ticket-conversation-panel"
+                    id="tab-conversation"
+                    tabIndex={conversationView === 'conversation' ? 0 : -1}
+                    onClick={() => setConversationView('conversation')}
+                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 focus-visible:ring-offset-2 ${
+                      conversationView === 'conversation'
+                        ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    <MessageSquare className="h-4 w-4 flex-shrink-0" aria-hidden />
+                    Conversation
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={conversationView === 'timeline'}
+                    aria-controls="ticket-timeline-panel"
+                    id="tab-timeline"
+                    tabIndex={conversationView === 'timeline' ? 0 : -1}
+                    onClick={() => setConversationView('timeline')}
+                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 focus-visible:ring-offset-2 ${
+                      conversationView === 'timeline'
+                        ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    <ListOrdered className="h-4 w-4 flex-shrink-0" aria-hidden />
+                    Timeline
+                  </button>
+                </div>
+              </div>
+              {conversationView === 'conversation' && (
+                <p className="text-sm text-slate-500">
+                  {role === 'EMPLOYEE' ? 'Chat with the assigned agent.' : 'Chat with the requester.'}
+                </p>
+              )}
             </div>
             {ticketError && !accessDenied && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
             {accessDenied && (
@@ -571,11 +629,26 @@ export function TicketDetailPage({
             {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
             {ticket && (
               <div className="flex flex-col flex-1 min-h-0 mt-4">
-                <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4">
-                  {ticket.messages.length === 0 && (
-                    <div className="text-sm text-slate-500">No messages yet. Start the conversation.</div>
-                  )}
-                  {ticket.messages.map((message) => {
+                {conversationView === 'timeline' ? (
+                  <div
+                    id="ticket-timeline-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-timeline"
+                    className="flex-1 min-h-0 overflow-y-auto pr-2"
+                  >
+                    <ActivityTimeline ticket={ticket} />
+                  </div>
+                ) : (
+                  <div
+                    id="ticket-conversation-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-conversation"
+                    className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4"
+                  >
+                    {ticket.messages.length === 0 && (
+                      <div className="text-sm text-slate-500">No messages yet. Start the conversation.</div>
+                    )}
+                    {ticket.messages.map((message) => {
                     const isOptimistic =
                       typeof message.id === 'string' && message.id.startsWith('opt-');
                     const isOwn = message.author?.email === currentEmail;
@@ -638,59 +711,62 @@ export function TicketDetailPage({
                   })}
                   <div ref={messagesEndRef} />
                 </div>
-                <div className="flex-shrink-0 border-t border-slate-200/60 pt-4 mt-4">
-                  {role !== 'EMPLOYEE' && (
-                    <div className="mb-3 inline-flex rounded-full border border-slate-200 bg-white/80 p-1 text-xs">
+                )}
+                {conversationView === 'conversation' && (
+                  <div className="flex-shrink-0 border-t border-slate-200/60 pt-4 mt-4">
+                    {role !== 'EMPLOYEE' && (
+                      <div className="mb-3 inline-flex rounded-full border border-slate-200 bg-white/80 p-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setMessageType('PUBLIC')}
+                          className={`rounded-full px-3 py-1 font-semibold transition ${
+                            messageType === 'PUBLIC'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Public reply
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMessageType('INTERNAL')}
+                          className={`rounded-full px-3 py-1 font-semibold transition ${
+                            messageType === 'INTERNAL'
+                              ? 'bg-amber-500 text-white'
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Internal note
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 bg-white/80 focus-within:ring-2 focus-within:ring-slate-900/10">
+                        <RichTextEditor
+                          ref={replyEditorRef}
+                          value={messageBody}
+                          onChange={setMessageBody}
+                          placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
+                          users={teamMembers.map((m) => m.user)}
+                          cannedVariables={{
+                            ticketId: ticket?.id,
+                            ticketSubject: ticket?.subject,
+                            requesterName: ticket?.requester?.displayName ?? ticket?.requester?.email,
+                          }}
+                          minRows={2}
+                          maxRows={12}
+                        />
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setMessageType('PUBLIC')}
-                        className={`rounded-full px-3 py-1 font-semibold transition ${
-                          messageType === 'PUBLIC'
-                            ? 'bg-slate-900 text-white'
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
+                        onClick={handleReply}
+                        className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 transition"
                       >
-                        Public reply
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMessageType('INTERNAL')}
-                        className={`rounded-full px-3 py-1 font-semibold transition ${
-                          messageType === 'INTERNAL'
-                            ? 'bg-amber-500 text-white'
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Internal note
+                        Send
                       </button>
                     </div>
-                  )}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 bg-white/80 focus-within:ring-2 focus-within:ring-slate-900/10">
-                      <RichTextEditor
-                        ref={replyEditorRef}
-                        value={messageBody}
-                        onChange={setMessageBody}
-                        placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
-                        users={teamMembers.map((m) => m.user)}
-                        cannedVariables={{
-                          ticketId: ticket?.id,
-                          ticketSubject: ticket?.subject,
-                          requesterName: ticket?.requester?.displayName ?? ticket?.requester?.email,
-                        }}
-                        minRows={2}
-                        maxRows={12}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleReply}
-                      className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 transition"
-                    >
-                      Send
-                    </button>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
