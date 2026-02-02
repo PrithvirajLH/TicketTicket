@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronUp, Copy, Info } from 'lucide-react';
 import {
   addTicketMessage,
+  ApiError,
   assignTicket,
   downloadAttachment,
   followTicket,
@@ -53,6 +54,7 @@ export function TicketDetailPage({
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [messageBody, setMessageBody] = useState('');
   const [messageType, setMessageType] = useState<'PUBLIC' | 'INTERNAL'>('PUBLIC');
   const [actionError, setActionError] = useState<string | null>(null);
@@ -224,11 +226,18 @@ export function TicketDetailPage({
   async function loadTicketDetail(id: string) {
     setLoadingDetail(true);
     setTicketError(null);
+    setAccessDenied(false);
+    setTicket(null);
     try {
       const detail = await fetchTicketById(id);
       setTicket(detail);
     } catch (error) {
-      setTicketError('Unable to load ticket details.');
+      if (error instanceof ApiError && error.status === 403) {
+        setAccessDenied(true);
+        setTicketError('You don’t have access to this ticket.');
+      } else {
+        setTicketError('Unable to load ticket details.');
+      }
     } finally {
       setLoadingDetail(false);
     }
@@ -532,7 +541,20 @@ export function TicketDetailPage({
                 {role === 'EMPLOYEE' ? 'Chat with the assigned agent.' : 'Chat with the requester.'}
               </p>
             </div>
-            {ticketError && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
+            {ticketError && !accessDenied && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
+            {accessDenied && (
+              <div className="mt-4 p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
+                <p className="text-sm font-medium">You don’t have access to this ticket.</p>
+                <p className="text-sm text-amber-800 mt-1">Switch to a user who can view it, or go back to the ticket list.</p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/tickets')}
+                  className="mt-3 text-sm font-semibold text-amber-800 hover:text-amber-900 underline"
+                >
+                  Back to tickets
+                </button>
+              </div>
+            )}
             {loadingDetail && (
               <div className="mt-4 space-y-3">
                 {Array.from({ length: 4 }).map((_, index) => (
@@ -546,7 +568,7 @@ export function TicketDetailPage({
                 ))}
               </div>
             )}
-            {!loadingDetail && !ticket && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
+            {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
             {ticket && (
               <div className="flex flex-col flex-1 min-h-0 mt-4">
                 <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4">

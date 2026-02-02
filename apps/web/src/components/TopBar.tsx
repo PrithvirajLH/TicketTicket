@@ -73,6 +73,7 @@ export function TopBar({
             onMarkAsRead={notificationProps.onMarkAsRead}
             onMarkAllAsRead={notificationProps.onMarkAllAsRead}
             onRefresh={notificationProps.onRefresh}
+            unreadOnly={true}
           />
         )}
       </div>

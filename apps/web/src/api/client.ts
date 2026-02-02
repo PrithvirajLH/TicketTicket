@@ -1,6 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api';
 const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as string | undefined;
 
+/** Thrown by apiFetch when response is not ok; includes status for UI (e.g. 403). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export type UserRef = {
   id: string;
   email: string;
@@ -181,7 +192,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || 'Request failed');
+    throw new ApiError(message || 'Request failed', response.status);
   }
 
   return (await response.json()) as T;
