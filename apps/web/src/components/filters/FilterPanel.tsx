@@ -135,7 +135,7 @@ export function FilterPanel({
               label="SLA Status"
               options={SLA_STATUS_OPTIONS}
               selected={filters.slaStatus}
-              onChange={(slaStatus) => setFilters({ slaStatus })}
+              onChange={(slaStatus) => setFilters({ slaStatus: slaStatus as typeof filters.slaStatus })}
             />
             <DateRangeFilter
               label="Created Date"

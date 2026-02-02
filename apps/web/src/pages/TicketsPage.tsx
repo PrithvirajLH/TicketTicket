@@ -15,15 +15,18 @@ import {
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { FilterPanel } from '../components/filters/FilterPanel';
 import { RelativeTime } from '../components/RelativeTime';
+import { TicketTableView } from '../components/TicketTableView';
+import { ViewToggle } from '../components/ViewToggle';
 import { useFilters } from '../hooks/useFilters';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
+import { useTableSettings } from '../hooks/useTableSettings';
 import { useTicketSelection } from '../hooks/useTicketSelection';
 import type { Role, StatusFilter, TicketScope } from '../types';
 import { formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
 
 export function TicketsPage({
   role,
-  currentEmail,
+  currentEmail: _currentEmail,
   presetStatus,
   presetScope,
   refreshKey,
@@ -42,6 +45,7 @@ export function TicketsPage({
     presetScope,
     presetStatus
   );
+  const tableSettings = useTableSettings();
 
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
@@ -147,8 +151,9 @@ export function TicketsPage({
     setFocusedTicketIndex((prev) => (prev >= n ? n - 1 : prev));
   }, [filteredTickets.length]);
 
-  // Ticket list keyboard shortcuts: J, K, Enter, X, Shift+X
+  // Ticket list keyboard shortcuts: J, K, Enter, X, Shift+X (grid view only)
   useEffect(() => {
+    if (tableSettings.viewMode !== 'grid') return;
     if (filteredTickets.length === 0) return;
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -214,7 +219,7 @@ export function TicketsPage({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredTickets, anchorIndex, selection, navigate]);
+  }, [filteredTickets, anchorIndex, selection, navigate, tableSettings.viewMode]);
 
   // Scroll focused ticket into view
   useEffect(() => {
@@ -307,6 +312,10 @@ export function TicketsPage({
                 <option value="resolved">Resolved</option>
                 <option value="all">All</option>
               </select>
+              <ViewToggle
+                value={tableSettings.viewMode}
+                onChange={tableSettings.setViewMode}
+              />
             </div>
           </div>
 
@@ -396,7 +405,7 @@ export function TicketsPage({
           <p className="text-sm text-slate-500 mt-4">No tickets match this filter.</p>
         )}
 
-        {!loadingTickets && filteredTickets.length > 0 && role !== 'EMPLOYEE' && (
+        {!loadingTickets && filteredTickets.length > 0 && role !== 'EMPLOYEE' && tableSettings.viewMode === 'grid' && (
           <div className="mt-4 flex items-center gap-3 px-1">
             <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
               <input
@@ -410,7 +419,28 @@ export function TicketsPage({
           </div>
         )}
 
-        {!loadingTickets && (
+        {!loadingTickets && tableSettings.viewMode === 'table' && filteredTickets.length > 0 && (
+          <TicketTableView
+            tickets={filteredTickets}
+            role={role}
+            selection={{
+              isSelected: selection.isSelected,
+              toggle: selection.toggle,
+              toggleAll: selection.toggleAll,
+              isAllSelected: selection.isAllSelected,
+            }}
+            columnWidths={tableSettings.columnWidths}
+            columnVisibility={tableSettings.columnVisibility}
+            setColumnWidth={tableSettings.setColumnWidth}
+            setColumnVisible={tableSettings.setColumnVisible}
+            sortField={filters.sort}
+            sortOrder={filters.order}
+            onSortChange={(field, order) => setFilters({ sort: field, order })}
+            onRowClick={(ticket) => navigate(`/tickets/${ticket.id}`)}
+          />
+        )}
+
+        {!loadingTickets && tableSettings.viewMode === 'grid' && filteredTickets.length > 0 && (
           <div className="mt-4 space-y-3">
             {filteredTickets.map((ticket, index) => (
               <div

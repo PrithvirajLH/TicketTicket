@@ -8,7 +8,7 @@ export function MultiSelectFilter({
   options,
   selected,
   onChange,
-  placeholder = 'Select…',
+  placeholder: _placeholder = 'Select…',
   searchable = true,
 }: {
   label: string;

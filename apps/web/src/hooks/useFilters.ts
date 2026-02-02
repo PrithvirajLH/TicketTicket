@@ -2,25 +2,6 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { SortField, SortOrder, StatusFilter, SlaStatusFilter, TicketFilters, TicketScope } from '../types';
 
-const DEFAULT_FILTERS: TicketFilters = {
-  statuses: [],
-  priorities: [],
-  teamIds: [],
-  assigneeIds: [],
-  requesterIds: [],
-  slaStatus: [],
-  createdFrom: '',
-  createdTo: '',
-  updatedFrom: '',
-  updatedTo: '',
-  dueFrom: '',
-  dueTo: '',
-  q: '',
-  scope: 'all',
-  sort: 'updatedAt',
-  order: 'desc',
-};
-
 function parseArray(value: string | null): string[] {
   if (!value) return [];
   return value.split(',').map((s) => s.trim()).filter(Boolean);
