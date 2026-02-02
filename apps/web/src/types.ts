@@ -23,6 +23,8 @@ export type TicketFilters = {
   scope: TicketScope;
   sort: SortField;
   order: SortOrder;
+  page: number;
+  pageSize: number;
 };
 export type TicketScope = 'all' | 'assigned' | 'unassigned' | 'created';
 

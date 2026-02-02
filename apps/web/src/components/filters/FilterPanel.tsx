@@ -66,7 +66,7 @@ export function FilterPanel({
   }));
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-visible">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}

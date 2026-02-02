@@ -8,6 +8,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReportsModule } from './reports/reports.module';
 import { RoutingRulesModule } from './routing/routing.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
 import { SlasModule } from './slas/slas.module';
@@ -30,6 +31,7 @@ const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
     CustomFieldsModule,
     NotificationsModule,
     PrismaModule,
+    ReportsModule,
     RoutingRulesModule,
     SavedViewsModule,
     SlasModule,

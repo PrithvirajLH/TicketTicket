@@ -13,9 +13,13 @@ function parseDate(value: string | null): string {
   return Number.isNaN(d.getTime()) ? '' : value;
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+
 function parseFilters(searchParams: URLSearchParams, presetScope?: TicketScope, presetStatus?: StatusFilter): TicketFilters {
   const scope = (searchParams.get('scope') as TicketScope) || presetScope || 'all';
   const statusGroup = (searchParams.get('statusGroup') as StatusFilter) || presetStatus || undefined;
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const pageSize = Math.min(100, Math.max(10, parseInt(searchParams.get('pageSize') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
   return {
     statusGroup,
     statuses: parseArray(searchParams.get('statuses')),
@@ -34,6 +38,8 @@ function parseFilters(searchParams: URLSearchParams, presetScope?: TicketScope, 
     scope,
     sort: (searchParams.get('sort') as SortField) || 'updatedAt',
     order: (searchParams.get('order') as SortOrder) || 'desc',
+    page,
+    pageSize,
   };
 }
 
@@ -56,6 +62,8 @@ function filtersToSearchParams(filters: Partial<TicketFilters>): URLSearchParams
   if (filters.scope && filters.scope !== 'all') params.set('scope', filters.scope);
   if (filters.sort && filters.sort !== 'updatedAt') params.set('sort', filters.sort);
   if (filters.order && filters.order !== 'desc') params.set('order', filters.order);
+  if (filters.page != null && filters.page > 1) params.set('page', String(filters.page));
+  if (filters.pageSize != null && filters.pageSize !== DEFAULT_PAGE_SIZE) params.set('pageSize', String(filters.pageSize));
   return params;
 }
 
@@ -67,9 +75,17 @@ export function useFilters(presetScope?: TicketScope, presetStatus?: StatusFilte
     [searchParams, presetScope, presetStatus],
   );
 
+  const PAGE_KEYS = ['page', 'pageSize'] as const;
+
   const setFilters = useCallback(
     (updates: Partial<TicketFilters>) => {
+      const hasNonPageUpdates = Object.keys(updates).some(
+        (k) => !PAGE_KEYS.includes(k as (typeof PAGE_KEYS)[number]),
+      );
       const next = { ...filters, ...updates };
+      if (hasNonPageUpdates) {
+        next.page = 1;
+      }
       const params = filtersToSearchParams(next);
       setSearchParams(params, { replace: false });
     },
@@ -104,8 +120,8 @@ export function useFilters(presetScope?: TicketScope, presetStatus?: StatusFilte
 
   const apiParams = useMemo(() => {
     const p: Record<string, string | number | undefined | string[]> = {
-      page: 1,
-      pageSize: 20,
+      page: filters.page ?? 1,
+      pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
       scope: filters.scope === 'all' ? undefined : filters.scope,
       sort: filters.sort,
       order: filters.order,

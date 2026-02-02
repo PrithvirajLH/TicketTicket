@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   bulkAssignTickets,
@@ -48,6 +48,7 @@ export function TicketsPage({
   const tableSettings = useTableSettings();
 
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
+  const [listMeta, setListMeta] = useState<{ page: number; pageSize: number; total: number; totalPages: number } | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
@@ -81,9 +82,11 @@ export function TicketsPage({
         sort: effectiveSort,
       });
       setTickets(response.data);
+      setListMeta(response.meta ?? null);
     } catch (error) {
       setTicketError('Unable to load tickets.');
       setTickets([]);
+      setListMeta(null);
     } finally {
       setLoadingTickets(false);
     }
@@ -514,6 +517,37 @@ export function TicketsPage({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {!loadingTickets && listMeta && listMeta.total > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+            <p className="text-sm text-slate-600">
+              Showing {(listMeta.page - 1) * listMeta.pageSize + 1}–{Math.min(listMeta.page * listMeta.pageSize, listMeta.total)} of {listMeta.total} tickets
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={listMeta.page <= 1}
+                onClick={() => setFilters({ page: listMeta.page - 1 })}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+              <span className="text-sm text-slate-500">
+                Page {listMeta.page} of {listMeta.totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={listMeta.page >= listMeta.totalPages}
+                onClick={() => setFilters({ page: listMeta.page + 1 })}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>

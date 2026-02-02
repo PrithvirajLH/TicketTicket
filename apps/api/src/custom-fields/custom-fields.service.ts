@@ -155,7 +155,7 @@ export class CustomFieldsService {
         AND: [
           { OR: [{ teamId: null }, { teamId }] },
           { OR: [{ categoryId: null }, { categoryId }] },
-        ] as const,
+        ],
       };
       const applicableFields = await client.customField.findMany({
         where: applicableWhere,

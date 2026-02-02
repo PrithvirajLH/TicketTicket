@@ -817,3 +817,73 @@ export function bulkPriorityTickets(ticketIds: string[], priority: string) {
     body: JSON.stringify({ ticketIds, priority })
   });
 }
+
+// ============================================
+// Reports
+// ============================================
+
+export type ReportQuery = {
+  from?: string;
+  to?: string;
+  teamId?: string;
+  priority?: string;
+  categoryId?: string;
+  groupBy?: 'team' | 'priority';
+};
+
+export type TicketVolumeResponse = { data: { date: string; count: number }[] };
+export type SlaComplianceResponse = {
+  data: {
+    met: number;
+    breached: number;
+    total: number;
+    firstResponseMet: number;
+    firstResponseBreached: number;
+    resolutionMet: number;
+    resolutionBreached: number;
+  };
+};
+export type ResolutionTimeResponse = {
+  data: { label: string; id?: string; avgHours: number; count: number }[];
+};
+export type TicketsByStatusResponse = { data: { status: string; count: number }[] };
+export type TicketsByPriorityResponse = { data: { priority: string; count: number }[] };
+export type AgentPerformanceResponse = {
+  data: {
+    userId: string;
+    name: string;
+    email: string;
+    ticketsResolved: number;
+    avgResolutionHours: number | null;
+    firstResponses: number;
+    avgFirstResponseHours: number | null;
+  }[];
+};
+
+function reportQueryString(params: ReportQuery): string {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== '') q.set(k, String(v));
+  });
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export function fetchReportTicketVolume(params: ReportQuery) {
+  return apiFetch<TicketVolumeResponse>(`/reports/ticket-volume${reportQueryString(params)}`);
+}
+export function fetchReportSlaCompliance(params: ReportQuery) {
+  return apiFetch<SlaComplianceResponse>(`/reports/sla-compliance${reportQueryString(params)}`);
+}
+export function fetchReportResolutionTime(params: ReportQuery) {
+  return apiFetch<ResolutionTimeResponse>(`/reports/resolution-time${reportQueryString(params)}`);
+}
+export function fetchReportTicketsByStatus(params: ReportQuery) {
+  return apiFetch<TicketsByStatusResponse>(`/reports/tickets-by-status${reportQueryString(params)}`);
+}
+export function fetchReportTicketsByPriority(params: ReportQuery) {
+  return apiFetch<TicketsByPriorityResponse>(`/reports/tickets-by-priority${reportQueryString(params)}`);
+}
+export function fetchReportAgentPerformance(params: ReportQuery) {
+  return apiFetch<AgentPerformanceResponse>(`/reports/agent-performance${reportQueryString(params)}`);
+}
