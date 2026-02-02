@@ -135,6 +135,7 @@ model Team {
   lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
   savedViews   SavedView[]
   cannedResponses CannedResponse[]
+  customFields CustomField[]
 }
 
 model Category {
@@ -150,6 +151,7 @@ model Category {
   parent      Category?  @relation("CategoryParent", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryParent")
   tickets     Ticket[]
+  customFields CustomField[]
 }
 
 model TeamMember {
@@ -200,6 +202,42 @@ model Ticket {
   notificationOutbox NotificationOutbox[]
   slaInstance    SlaInstance?
   notifications  Notification[]
+  customFieldValues CustomFieldValue[]
+}
+
+model CustomField {
+  id          String   @id @default(uuid())
+  name        String
+  fieldType   String   // TEXT, TEXTAREA, NUMBER, DROPDOWN, MULTISELECT, DATE, CHECKBOX, USER
+  options     Json?    // For dropdown/multiselect: [{value, label}]
+  isRequired  Boolean  @default(false)
+  teamId      String?
+  team        Team?    @relation(fields: [teamId], references: [id])
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  values      CustomFieldValue[]
+
+  @@index([teamId])
+  @@index([categoryId])
+}
+
+model CustomFieldValue {
+  id            String      @id @default(uuid())
+  ticketId      String
+  ticket        Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  customFieldId String
+  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+  value         String?     @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([ticketId, customFieldId])
+  @@index([ticketId])
+  @@index([customFieldId])
 }
 
 model TicketMessage {

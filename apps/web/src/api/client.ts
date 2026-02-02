@@ -49,6 +49,7 @@ export type TicketRecord = {
   number: number;
   displayId?: string | null;
   subject: string;
+  description?: string | null;
   status: string;
   priority: string;
   channel?: string;
@@ -99,11 +100,35 @@ export type TicketFollower = {
   user: UserRef;
 };
 
+export type CustomFieldRecord = {
+  id: string;
+  name: string;
+  fieldType: string;
+  options?: unknown;
+  isRequired: boolean;
+  teamId: string | null;
+  categoryId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomFieldValueRecord = {
+  id: string;
+  ticketId: string;
+  customFieldId: string;
+  value: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customField: CustomFieldRecord;
+};
+
 export type TicketDetail = TicketRecord & {
   messages: TicketMessage[];
   events: TicketEvent[];
   followers: TicketFollower[];
   attachments: Attachment[];
+  customFieldValues?: CustomFieldValueRecord[];
 };
 
 export type TeamMember = {
@@ -135,6 +160,7 @@ export type CreateTicketPayload = {
   assigneeId?: string;
   requesterId?: string;
   categoryId?: string;
+  customFieldValues?: { customFieldId: string; value?: string | null }[];
 };
 
 export type AddMessagePayload = {
@@ -285,6 +311,63 @@ export function updateCannedResponse(id: string, payload: { name?: string; conte
 export function deleteCannedResponse(id: string) {
   return apiFetch<{ deleted: boolean }>(`/canned-responses/${id}`, {
     method: 'DELETE',
+  });
+}
+
+export function fetchCustomFields(params?: { teamId?: string; categoryId?: string }) {
+  const query = new URLSearchParams();
+  if (params?.teamId) query.set('teamId', params.teamId);
+  if (params?.categoryId) query.set('categoryId', params.categoryId);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{ data: CustomFieldRecord[] }>(`/custom-fields${suffix}`);
+}
+
+export function createCustomField(payload: {
+  name: string;
+  fieldType: string;
+  options?: unknown;
+  isRequired?: boolean;
+  teamId?: string;
+  categoryId?: string;
+  sortOrder?: number;
+}) {
+  return apiFetch<CustomFieldRecord>('/custom-fields', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateCustomField(
+  id: string,
+  payload: {
+    name?: string;
+    fieldType?: string;
+    options?: unknown;
+    isRequired?: boolean;
+    teamId?: string | null;
+    categoryId?: string | null;
+    sortOrder?: number;
+  },
+) {
+  return apiFetch<CustomFieldRecord>(`/custom-fields/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteCustomField(id: string) {
+  return apiFetch<{ deleted: boolean }>(`/custom-fields/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function setTicketCustomValues(
+  ticketId: string,
+  values: { customFieldId: string; value?: string | null }[],
+) {
+  return apiFetch<CustomFieldValueRecord[]>(`/custom-fields/tickets/${ticketId}/values`, {
+    method: 'PATCH',
+    body: JSON.stringify({ values }),
   });
 }
 

@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
 import { CategoriesModule } from './categories/categories.module';
+import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RoutingRulesModule } from './routing/routing.module';
@@ -26,6 +27,7 @@ const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
     AuthModule,
     CannedResponsesModule,
     CategoriesModule,
+    CustomFieldsModule,
     NotificationsModule,
     PrismaModule,
     RoutingRulesModule,

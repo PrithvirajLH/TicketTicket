@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Clock, GitMerge, Layers } from 'lucide-react';
+import { Clock, GitMerge, Layers, ListChecks } from 'lucide-react';
 
 const adminCards = [
   {
@@ -19,6 +19,12 @@ const adminCards = [
     description: 'Manage ticket categories and subcategories.',
     href: '/categories',
     icon: Layers
+  },
+  {
+    title: 'Custom Fields',
+    description: 'Define custom fields per team for tickets.',
+    href: '/custom-fields',
+    icon: ListChecks
   }
 ];
 

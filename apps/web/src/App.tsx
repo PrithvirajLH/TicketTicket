@@ -15,10 +15,14 @@ import {
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   createTicket,
+  fetchCategories,
+  fetchCustomFields,
   fetchTeams,
   fetchTicketCounts,
   getDemoUserEmail,
   setDemoUserEmail,
+  type CategoryRef,
+  type CustomFieldRecord,
   type TeamRef
 } from './api/client';
 import { CommandPalette } from './components/CommandPalette';
@@ -36,6 +40,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { AdminPage } from './pages/AdminPage';
 import { RoutingRulesPage } from './pages/RoutingRulesPage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { CustomFieldsAdminPage } from './pages/CustomFieldsAdminPage';
 import { TeamPage } from './pages/TeamPage';
 import { TicketDetailPage } from './pages/TicketDetailPage';
 import { TicketsPage } from './pages/TicketsPage';
@@ -103,7 +108,7 @@ function deriveNavKey(
   if (pathname.startsWith('/sla-settings')) {
     return 'sla-settings';
   }
-  if (pathname.startsWith('/routing') || pathname.startsWith('/categories')) {
+  if (pathname.startsWith('/routing') || pathname.startsWith('/categories') || pathname.startsWith('/custom-fields')) {
     return 'admin';
   }
   if (pathname.startsWith('/reports')) {
@@ -187,12 +192,41 @@ function App() {
     description: '',
     priority: 'P3',
     channel: 'PORTAL',
-    assignedTeamId: ''
+    assignedTeamId: '',
+    categoryId: ''
   });
+  const [createCategories, setCreateCategories] = useState<CategoryRef[]>([]);
+  const [createCustomFieldsRaw, setCreateCustomFieldsRaw] = useState<CustomFieldRecord[]>([]);
+  const [createCustomFieldValues, setCreateCustomFieldValues] = useState<Record<string, string>>({});
+
+  const createCustomFields = useMemo(() => {
+    if (!createForm.categoryId) return createCustomFieldsRaw;
+    return createCustomFieldsRaw.filter(
+      (f) => !f.categoryId || f.categoryId === createForm.categoryId
+    );
+  }, [createCustomFieldsRaw, createForm.categoryId]);
 
   useEffect(() => {
     setDemoUserEmail(currentEmail);
   }, [currentEmail]);
+
+  useEffect(() => {
+    fetchCategories({ includeInactive: false })
+      .then((res) => setCreateCategories(res.data))
+      .catch(() => setCreateCategories([]));
+  }, []);
+
+  useEffect(() => {
+    if (!createForm.assignedTeamId) {
+      setCreateCustomFieldsRaw([]);
+      setCreateCustomFieldValues({});
+      return;
+    }
+    fetchCustomFields({ teamId: createForm.assignedTeamId })
+      .then((res) => setCreateCustomFieldsRaw(res.data))
+      .catch(() => setCreateCustomFieldsRaw([]));
+    setCreateCustomFieldValues({});
+  }, [createForm.assignedTeamId]);
 
   useEffect(() => {
     setNavKey(deriveNavKey(location.pathname, currentPersona.role, ticketPresetStatus, ticketPresetScope));
@@ -285,14 +319,26 @@ function App() {
     event.preventDefault();
     setTicketError(null);
     try {
+      const customFieldValues = createCustomFields
+        .filter((f) => {
+          const v = createCustomFieldValues[f.id];
+          return v !== undefined && (v !== '' || f.isRequired);
+        })
+        .map((f) => ({
+          customFieldId: f.id,
+          value: createCustomFieldValues[f.id] ?? null
+        }));
       await createTicket({
         subject: createForm.subject,
         description: createForm.description,
         priority: createForm.priority,
         channel: createForm.channel,
-        assignedTeamId: createForm.assignedTeamId
+        assignedTeamId: createForm.assignedTeamId,
+        ...(createForm.categoryId && { categoryId: createForm.categoryId }),
+        ...(customFieldValues.length > 0 && { customFieldValues })
       });
-      setCreateForm({ subject: '', description: '', priority: 'P3', channel: 'PORTAL', assignedTeamId: '' });
+      setCreateForm({ subject: '', description: '', priority: 'P3', channel: 'PORTAL', assignedTeamId: '', categoryId: '' });
+      setCreateCustomFieldValues({});
       setShowCreateModal(false);
       setRefreshKey((prev) => prev + 1);
     } catch (error) {
@@ -368,11 +414,15 @@ function App() {
     ? 'Routing Rules'
     : location.pathname.startsWith('/categories')
     ? 'Categories'
+    : location.pathname.startsWith('/custom-fields')
+    ? 'Custom Fields'
     : undefined;
   const viewSubtitleOverride = location.pathname.startsWith('/routing')
     ? 'Manage keyword-based routing logic.'
     : location.pathname.startsWith('/categories')
     ? 'Organize ticket categories and subcategories.'
+    : location.pathname.startsWith('/custom-fields')
+    ? 'Define custom fields per team for tickets.'
     : undefined;
 
   const viewTitle = viewTitleOverride ?? viewMeta[navKey]?.title ?? 'Dashboard';
@@ -511,6 +561,16 @@ function App() {
               }
             />
             <Route
+              path="/custom-fields"
+              element={
+                currentPersona.role === 'ADMIN' ? (
+                  <CustomFieldsAdminPage />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
               path="/tickets"
               element={
                 <TicketsPage
@@ -561,8 +621,14 @@ function App() {
         onSubmit={handleCreateTicket}
         error={ticketError}
         teams={teamsList}
+        categories={createCategories}
         form={createForm}
         onChange={(field, value) => setCreateForm((prev) => ({ ...prev, [field]: value }))}
+        customFields={createCustomFields}
+        customFieldValues={createCustomFieldValues}
+        onCustomFieldChange={(fieldId, value) =>
+          setCreateCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+        }
       />
     </div>
   );

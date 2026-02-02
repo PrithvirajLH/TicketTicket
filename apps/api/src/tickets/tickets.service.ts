@@ -20,6 +20,7 @@ import type { Express } from 'express';
 import { createReadStream, promises as fs } from 'fs';
 import path from 'path';
 import { AuthUser } from '../auth/current-user.decorator';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
@@ -41,6 +42,7 @@ export class TicketsService {
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
+    private readonly customFieldsService: CustomFieldsService,
   ) {}
 
   private defaultSlaConfig: Record<
@@ -305,6 +307,9 @@ export class TicketsService {
           include: { author: true },
         },
         events: { orderBy: { createdAt: 'asc' }, include: { createdBy: true } },
+        customFieldValues: {
+          include: { customField: true },
+        },
       },
     });
 
@@ -336,68 +341,110 @@ export class TicketsService {
       : await this.resolveAssignee(routedTeamId);
     const assigneeId = payload.assigneeId ?? autoAssigneeId;
 
-    const ticket = await this.prisma.ticket.create({
-      data: {
-        subject: payload.subject,
-        description: payload.description,
-        priority: payload.priority,
-        channel: payload.channel,
-        requesterId,
-        assignedTeamId: routedTeamId,
-        assigneeId,
-        categoryId: payload.categoryId,
-        status: TicketStatus.NEW,
-      },
-      include: {
-        requester: true,
-        assignee: true,
-        assignedTeam: true,
-      },
+    const updatedTicket = await this.prisma.$transaction(async (tx) => {
+      const validatedCustomValues = await this.customFieldsService.validateAndNormalizeValuesForTicket(
+        payload.customFieldValues ?? [],
+        routedTeamId,
+        payload.categoryId ?? null,
+        { requireAllRequired: true, tx },
+      );
+
+      const ticket = await tx.ticket.create({
+        data: {
+          subject: payload.subject,
+          description: payload.description,
+          priority: payload.priority,
+          channel: payload.channel,
+          requesterId,
+          assignedTeamId: routedTeamId,
+          assigneeId,
+          categoryId: payload.categoryId,
+          status: TicketStatus.NEW,
+        },
+        include: {
+          requester: true,
+          assignee: true,
+          assignedTeam: true,
+        },
+      });
+
+      const displayId = this.buildDisplayId(
+        ticket.assignedTeam?.name ?? null,
+        ticket.createdAt,
+        ticket.number,
+      );
+      const sla = await this.getSlaConfig(
+        ticket.priority,
+        ticket.assignedTeamId,
+        tx,
+      );
+      const firstResponseDueAt = sla
+        ? this.addHours(ticket.createdAt, sla.firstResponseHours)
+        : null;
+      const resolutionDueAt = sla
+        ? this.addHours(ticket.createdAt, sla.resolutionHours)
+        : null;
+
+      const updated = await tx.ticket.update({
+        where: { id: ticket.id },
+        data: { displayId, firstResponseDueAt, dueAt: resolutionDueAt },
+        include: {
+          requester: true,
+          assignee: true,
+          assignedTeam: true,
+          category: true,
+        },
+      });
+
+      await tx.ticketEvent.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'TICKET_CREATED',
+          payload: {
+            subject: ticket.subject,
+            priority: ticket.priority,
+            channel: ticket.channel,
+          },
+          createdById: requesterId,
+        },
+      });
+
+      for (const item of validatedCustomValues) {
+        await tx.customFieldValue.create({
+          data: {
+            ticketId: ticket.id,
+            customFieldId: item.customFieldId,
+            value: item.value,
+          },
+        });
+      }
+
+      await tx.ticketFollower.upsert({
+        where: {
+          ticketId_userId: { ticketId: ticket.id, userId: requesterId },
+        },
+        update: {},
+        create: { ticketId: ticket.id, userId: requesterId },
+      });
+      if (ticket.assigneeId) {
+        await tx.ticketFollower.upsert({
+          where: {
+            ticketId_userId: { ticketId: ticket.id, userId: ticket.assigneeId },
+          },
+          update: {},
+          create: { ticketId: ticket.id, userId: ticket.assigneeId },
+        });
+      }
+
+      return updated;
     });
 
-    const displayId = this.buildDisplayId(
-      ticket.assignedTeam?.name ?? null,
-      ticket.createdAt,
-      ticket.number,
+    const sla = await this.getSlaConfig(
+      updatedTicket.priority,
+      updatedTicket.assignedTeamId,
     );
-    const sla = await this.getSlaConfig(ticket.priority, ticket.assignedTeamId);
-    const firstResponseDueAt = sla
-      ? this.addHours(ticket.createdAt, sla.firstResponseHours)
-      : null;
-    const resolutionDueAt = sla
-      ? this.addHours(ticket.createdAt, sla.resolutionHours)
-      : null;
-    const updatedTicket = await this.prisma.ticket.update({
-      where: { id: ticket.id },
-      data: { displayId, firstResponseDueAt, dueAt: resolutionDueAt },
-      include: {
-        requester: true,
-        assignee: true,
-        assignedTeam: true,
-        category: true,
-      },
-    });
-
     await this.slaEngine.syncFromTicket(updatedTicket.id, {
       policyId: sla?.policyId ?? null,
-    });
-
-    await this.ensureFollower(ticket.id, requesterId);
-    if (ticket.assigneeId) {
-      await this.ensureFollower(ticket.id, ticket.assigneeId);
-    }
-
-    await this.prisma.ticketEvent.create({
-      data: {
-        ticketId: ticket.id,
-        type: 'TICKET_CREATED',
-        payload: {
-          subject: ticket.subject,
-          priority: ticket.priority,
-          channel: ticket.channel,
-        },
-        createdById: payload.requesterId,
-      },
     });
 
     if (autoAssigneeId && routedTeamId) {
@@ -414,7 +461,7 @@ export class TicketsService {
     if (assigneeId) {
       await this.prisma.ticketEvent.create({
         data: {
-          ticketId: ticket.id,
+          ticketId: updatedTicket.id,
           type: 'TICKET_ASSIGNED',
           payload: { assigneeId },
           createdById: user.id,
@@ -426,7 +473,17 @@ export class TicketsService {
       this.notifications.ticketCreated(updatedTicket, user),
     );
 
-    return updatedTicket;
+    const result = await this.prisma.ticket.findUnique({
+      where: { id: updatedTicket.id },
+      include: {
+        requester: true,
+        assignee: true,
+        assignedTeam: true,
+        category: true,
+        customFieldValues: { include: { customField: true } },
+      },
+    });
+    return result ?? updatedTicket;
   }
 
   async addMessage(
@@ -1372,9 +1429,14 @@ export class TicketsService {
     );
   }
 
-  private async getSlaConfig(priority: TicketPriority, teamId: string | null) {
+  private async getSlaConfig(
+    priority: TicketPriority,
+    teamId: string | null,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
     if (teamId) {
-      const policy = await this.prisma.slaPolicy.findUnique({
+      const policy = await client.slaPolicy.findUnique({
         where: {
           teamId_priority: {
             teamId,

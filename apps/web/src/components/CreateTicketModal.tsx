@@ -1,6 +1,7 @@
 import { type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import type { TeamRef } from '../api/client';
+import type { CategoryRef, CustomFieldRecord, TeamRef } from '../api/client';
+import { CustomFieldInput } from './CustomFieldRenderer';
 
 export type CreateTicketForm = {
   subject: string;
@@ -8,6 +9,7 @@ export type CreateTicketForm = {
   priority: string;
   channel: string;
   assignedTeamId: string;
+  categoryId: string;
 };
 
 export function CreateTicketModal({
@@ -16,16 +18,24 @@ export function CreateTicketModal({
   onSubmit,
   error,
   teams,
+  categories = [],
   form,
-  onChange
+  onChange,
+  customFields = [],
+  customFieldValues = {},
+  onCustomFieldChange
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   error: string | null;
   teams: TeamRef[];
+  categories?: CategoryRef[];
   form: CreateTicketForm;
   onChange: (field: keyof CreateTicketForm, value: string) => void;
+  customFields?: CustomFieldRecord[];
+  customFieldValues?: Record<string, string>;
+  onCustomFieldChange?: (fieldId: string, value: string) => void;
 }) {
   if (!open) {
     return null;
@@ -77,6 +87,23 @@ export function CreateTicketModal({
               ))}
             </select>
           </div>
+          {categories.length > 0 && (
+            <div>
+              <label className="text-xs text-slate-500">Category (optional)</label>
+              <select
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+                value={form.categoryId}
+                onChange={(event) => onChange('categoryId', event.target.value)}
+              >
+                <option value="">Any category</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-xs text-slate-500">Subject</label>
             <input
@@ -122,6 +149,19 @@ export function CreateTicketModal({
               </select>
             </div>
           </div>
+          {customFields.length > 0 && (
+            <div className="space-y-3 border-t border-slate-200 pt-4">
+              <p className="text-xs font-medium text-slate-600">Custom fields</p>
+              {customFields.map((field) => (
+                <CustomFieldInput
+                  key={field.id}
+                  field={field}
+                  value={customFieldValues[field.id] ?? ''}
+                  onChange={(value) => onCustomFieldChange?.(field.id, value)}
+                />
+              ))}
+            </div>
+          )}
           <button
             type="submit"
             className="w-full rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 transition"

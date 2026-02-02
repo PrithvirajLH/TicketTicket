@@ -18,6 +18,7 @@ import {
   type TicketDetail,
   type TicketMessage
 } from '../api/client';
+import { CustomFieldsDisplay } from '../components/CustomFieldRenderer';
 import type { Role } from '../types';
 import { ActivityTimeline } from '../components/ActivityTimeline';
 import { MessageBody } from '../components/MessageBody';
@@ -505,6 +506,9 @@ export function TicketDetailPage({
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">Ticket overview</p>
                   <h2 className="text-2xl font-semibold text-slate-900 mt-1">{ticket.subject}</h2>
+                  {ticket.description && (
+                    <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap max-w-3xl">{ticket.description}</p>
+                  )}
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                       Ticket ID
@@ -1268,6 +1272,13 @@ function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; l
           <div className="flex items-center justify-between py-2 border-b border-slate-100">
             <span className="text-xs text-slate-500 uppercase tracking-wide">Category</span>
             <span className="text-sm font-medium text-slate-900">{ticket.category.name}</span>
+          </div>
+        )}
+
+        {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
+          <div className="py-2 border-b border-slate-100 space-y-2">
+            <span className="text-xs text-slate-500 uppercase tracking-wide block">Custom fields</span>
+            <CustomFieldsDisplay values={ticket.customFieldValues} />
           </div>
         )}
 

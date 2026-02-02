@@ -10,6 +10,7 @@ import {
   BarChart3,
   FolderKanban,
   ClipboardList,
+  ListChecks,
   Plus,
   X,
   ArrowRight,
@@ -47,7 +48,8 @@ const PAGES: PageResult[] = [
   { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN'] },
   { key: 'admin', label: 'Admin Settings', path: '/admin', icon: Settings, roles: ['ADMIN'] },
   { key: 'routing', label: 'Routing Rules', path: '/routing', icon: Settings, roles: ['ADMIN'] },
-  { key: 'categories', label: 'Categories', path: '/categories', icon: FolderKanban, roles: ['ADMIN'] }
+  { key: 'categories', label: 'Categories', path: '/categories', icon: FolderKanban, roles: ['ADMIN'] },
+  { key: 'custom-fields', label: 'Custom Fields', path: '/custom-fields', icon: ListChecks, roles: ['ADMIN'] }
 ];
 
 const ACTIONS = [
