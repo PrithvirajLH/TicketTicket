@@ -52,20 +52,13 @@ export function Sidebar({
               type="button"
               onClick={() => onSelect(item.key)}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                collapsed ? 'justify-center' : ''
+              } ${
                 isActive ? 'bg-slate-900 text-white shadow-soft' : 'text-slate-700 hover:bg-slate-100/70'
               }`}
             >
-              <span className="relative flex-shrink-0">
+              <span className="flex-shrink-0">
                 <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-600'}`} />
-                {collapsed && typeof item.badge === 'number' && item.badge > 0 && (
-                  <span
-                    className={`absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-semibold ${
-                      isActive ? 'bg-white/90 text-slate-900' : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {item.badge > 99 ? '99+' : item.badge}
-                  </span>
-                )}
               </span>
               {!collapsed && (
                 <span className="flex-1 text-left truncate flex items-center gap-2">

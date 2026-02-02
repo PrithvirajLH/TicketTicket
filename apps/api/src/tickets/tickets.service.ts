@@ -53,6 +53,21 @@ export class TicketsService {
     [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
   };
 
+  private readonly WAITING_STATUSES = [
+    TicketStatus.WAITING_ON_REQUESTER,
+    TicketStatus.WAITING_ON_VENDOR,
+  ];
+
+  /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
+  private toEndExclusive(dateStr: string): Date {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const d = new Date(`${dateStr}T00:00:00.000Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d;
+    }
+    return new Date(dateStr);
+  }
+
   async list(query: ListTicketsDto, user: AuthUser) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -60,7 +75,9 @@ export class TicketsService {
 
     const filters: Prisma.TicketWhereInput[] = [];
 
-    if (query.status) {
+    if (query.statuses?.length) {
+      filters.push({ status: { in: query.statuses } });
+    } else if (query.status) {
       filters.push({ status: query.status });
     } else if (query.statusGroup && query.statusGroup !== 'all') {
       if (query.statusGroup === 'open') {
@@ -74,7 +91,9 @@ export class TicketsService {
       }
     }
 
-    if (query.priority) {
+    if (query.priorities?.length) {
+      filters.push({ priority: { in: query.priorities } });
+    } else if (query.priority) {
       filters.push({ priority: query.priority });
     }
 
@@ -86,16 +105,78 @@ export class TicketsService {
       filters.push({ requesterId: user.id });
     }
 
-    if (query.teamId) {
+    if (query.teamIds?.length) {
+      filters.push({ assignedTeamId: { in: query.teamIds } });
+    } else if (query.teamId) {
       filters.push({ assignedTeamId: query.teamId });
     }
 
-    if (query.assigneeId) {
+    if (query.assigneeIds?.length) {
+      filters.push({ assigneeId: { in: query.assigneeIds } });
+    } else if (query.assigneeId) {
       filters.push({ assigneeId: query.assigneeId });
     }
 
-    if (query.requesterId) {
+    if (query.requesterIds?.length) {
+      filters.push({ requesterId: { in: query.requesterIds } });
+    } else if (query.requesterId) {
       filters.push({ requesterId: query.requesterId });
+    }
+
+    if (query.createdFrom) {
+      filters.push({ createdAt: { gte: new Date(query.createdFrom) } });
+    }
+    if (query.createdTo) {
+      filters.push({ createdAt: { lt: this.toEndExclusive(query.createdTo) } });
+    }
+    if (query.updatedFrom) {
+      filters.push({ updatedAt: { gte: new Date(query.updatedFrom) } });
+    }
+    if (query.updatedTo) {
+      filters.push({ updatedAt: { lt: this.toEndExclusive(query.updatedTo) } });
+    }
+    if (query.dueFrom) {
+      filters.push({ dueAt: { gte: new Date(query.dueFrom) } });
+    }
+    if (query.dueTo) {
+      filters.push({ dueAt: { lt: this.toEndExclusive(query.dueTo) } });
+    }
+
+    if (query.slaStatus?.length) {
+      const now = new Date();
+      const riskEnd = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+      const slaConditions: Prisma.TicketWhereInput[] = [];
+      const notWaiting = { status: { notIn: this.WAITING_STATUSES } };
+      if (query.slaStatus.includes('breached')) {
+        slaConditions.push({
+          AND: [
+            { completedAt: null },
+            { dueAt: { not: null, lt: now } },
+            notWaiting,
+          ],
+        });
+      }
+      if (query.slaStatus.includes('at_risk')) {
+        slaConditions.push({
+          AND: [
+            { completedAt: null },
+            { dueAt: { not: null, gte: now, lte: riskEnd } },
+            notWaiting,
+          ],
+        });
+      }
+      if (query.slaStatus.includes('on_track')) {
+        slaConditions.push({
+          AND: [
+            { completedAt: null },
+            { dueAt: { not: null, gt: riskEnd } },
+            notWaiting,
+          ],
+        });
+      }
+      if (slaConditions.length) {
+        filters.push({ OR: slaConditions } });
+      }
     }
 
     if (query.q) {

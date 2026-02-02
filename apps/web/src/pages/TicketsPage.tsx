@@ -13,10 +13,12 @@ import {
   type UserRef
 } from '../api/client';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { FilterPanel } from '../components/filters/FilterPanel';
 import { RelativeTime } from '../components/RelativeTime';
+import { useFilters } from '../hooks/useFilters';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useTicketSelection } from '../hooks/useTicketSelection';
-import type { Role, SortField, StatusFilter, TicketScope } from '../types';
+import type { Role, StatusFilter, TicketScope } from '../types';
 import { formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
 
 export function TicketsPage({
@@ -35,16 +37,16 @@ export function TicketsPage({
   teamsList: TeamRef[];
 }) {
   const navigate = useNavigate();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(presetStatus);
-  const [sortField, setSortField] = useState<SortField>('createdAt');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [teamFilterId, setTeamFilterId] = useState('');
-  const [scopeFilter, setScopeFilter] = useState<TicketScope>(presetScope);
+  const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } = useFilters(
+    presetScope,
+    presetStatus
+  );
 
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
+  const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [focusedTicketIndex, setFocusedTicketIndex] = useState(0);
   const [anchorIndex, setAnchorIndex] = useState(0);
@@ -54,35 +56,26 @@ export function TicketsPage({
 
   useFocusSearchOnShortcut(searchInputRef);
 
+  const apiParamsKey = useMemo(() => JSON.stringify(apiParams), [apiParams]);
+
   useEffect(() => {
     focusedIndexRef.current = focusedTicketIndex;
   }, [focusedTicketIndex]);
 
-  useEffect(() => {
-    setStatusFilter(presetStatus);
-  }, [presetStatus]);
-
-  useEffect(() => {
-    setScopeFilter(presetScope);
-  }, [presetScope]);
-
-  useEffect(() => {
-    loadTickets();
-  }, [statusFilter, sortField, teamFilterId, scopeFilter, refreshKey]);
-
-  async function loadTickets() {
+  const loadTickets = useCallback(async () => {
     setLoadingTickets(true);
     setTicketError(null);
     setTickets([]);
     try {
       const effectiveSort =
-        statusFilter === 'resolved' ? sortField : sortField === 'completedAt' ? 'createdAt' : sortField;
+        filters.statusGroup === 'resolved'
+          ? filters.sort
+          : filters.sort === 'completedAt'
+            ? 'createdAt'
+            : filters.sort;
       const response = await fetchTickets({
-        statusGroup: statusFilter,
+        ...apiParams,
         sort: effectiveSort,
-        order: 'desc',
-        teamId: teamFilterId || undefined,
-        scope: scopeFilter === 'all' ? undefined : scopeFilter
       });
       setTickets(response.data);
     } catch (error) {
@@ -91,60 +84,32 @@ export function TicketsPage({
     } finally {
       setLoadingTickets(false);
     }
-  }
+  }, [apiParams, filters.statusGroup, filters.sort]);
 
-  const scopedTickets = useMemo(() => {
-    if (role === 'EMPLOYEE') {
-      return tickets;
-    }
-    if (scopeFilter === 'created') {
-      return tickets.filter((ticket) => ticket.requester?.email === currentEmail);
-    }
-    if (scopeFilter === 'assigned') {
-      return tickets.filter((ticket) => ticket.assignee?.email === currentEmail);
-    }
-    if (scopeFilter === 'unassigned') {
-      return tickets.filter((ticket) => !ticket.assignee);
-    }
-    return tickets;
-  }, [tickets, role, scopeFilter, currentEmail]);
+  useEffect(() => {
+    loadTickets();
+  }, [apiParamsKey, refreshKey, loadTickets]);
 
-  const filteredTickets = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return scopedTickets;
-    }
-    const lowered = searchQuery.toLowerCase();
-    return scopedTickets.filter((ticket) => {
-      return (
-        ticket.subject.toLowerCase().includes(lowered) ||
-        ticket.number.toString().includes(lowered) ||
-        ticket.assignedTeam?.name?.toLowerCase().includes(lowered)
-      );
-    });
-  }, [scopedTickets, searchQuery]);
-
+  const filteredTickets = tickets;
   const ticketIds = useMemo(() => filteredTickets.map((t) => t.id), [filteredTickets]);
   const selection = useTicketSelection(ticketIds);
 
-  useEffect(() => {
-    if (!teamFilterId) {
-      return;
-    }
-    const exists = teamsList.some((team) => team.id === teamFilterId);
-    if (!exists) {
-      setTeamFilterId('');
-    }
-  }, [teamsList, teamFilterId]);
-
-  // Fetch assignable users for bulk assign (agents/leads/admins only)
+  // Fetch users: assignable (for bulk assign / Assignee filter) and all users (for Requester filter)
   useEffect(() => {
     if (role === 'EMPLOYEE') {
       setAssignableUsers([]);
+      setRequesterOptions([]);
       return;
     }
     fetchUsers()
-      .then((res) => setAssignableUsers(res.data))
-      .catch(() => setAssignableUsers([]));
+      .then((res) => {
+        setAssignableUsers(res.data);
+        setRequesterOptions(res.data);
+      })
+      .catch(() => {
+        setAssignableUsers([]);
+        setRequesterOptions([]);
+      });
   }, [role]);
 
   // Toast auto-dismiss
@@ -291,70 +256,128 @@ export function TicketsPage({
           />
         )}
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">
-              {role === 'EMPLOYEE' ? 'Your tickets' : scopeFilter === 'created' ? 'Created by me' : 'Team tickets'}
-            </h3>
-            <p className="text-sm text-slate-500">Filter open, resolved, or all requests.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative">
-              <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                className="pl-9 pr-4 py-2 rounded-full border border-slate-200 bg-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {role === 'EMPLOYEE' ? 'Your tickets' : filters.scope === 'created' ? 'Created by me' : 'Team tickets'}
+              </h3>
+              <p className="text-sm text-slate-500">Filter and search tickets.</p>
             </div>
-            {role !== 'EMPLOYEE' && (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative">
+                <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="pl-9 pr-4 py-2 rounded-full border border-slate-200 bg-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  placeholder="Search subject or description"
+                  value={filters.q}
+                  onChange={(event) => setFilters({ q: event.target.value })}
+                />
+              </div>
+              {role !== 'EMPLOYEE' && (
+                <select
+                  className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+                  value={filters.scope}
+                  onChange={(event) => setFilters({ scope: event.target.value as TicketScope })}
+                >
+                  <option value="all">All visible</option>
+                  <option value="created">Created by me</option>
+                  <option value="assigned">Assigned to me</option>
+                  <option value="unassigned">Unassigned</option>
+                </select>
+              )}
               <select
                 className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
-                value={scopeFilter}
-                onChange={(event) => setScopeFilter(event.target.value as TicketScope)}
+                value={filters.sort}
+                onChange={(event) => setFilters({ sort: event.target.value as typeof filters.sort })}
               >
-                <option value="all">All visible</option>
-                <option value="created">Created by me</option>
-                <option value="assigned">Assigned to me</option>
-                <option value="unassigned">Unassigned</option>
+                <option value="createdAt">Sort by created</option>
+                <option value="updatedAt">Sort by updated</option>
+                <option value="completedAt">Sort by completion</option>
               </select>
-            )}
-            <select
-              className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
-              value={teamFilterId}
-              onChange={(event) => setTeamFilterId(event.target.value)}
-            >
-              <option value="">All departments</option>
-              {teamsList.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            >
-              <option value="open">Open</option>
-              <option value="resolved">Resolved</option>
-              <option value="all">All</option>
-            </select>
-            <select
-              className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
-              value={sortField}
-              onChange={(event) => setSortField(event.target.value as SortField)}
-            >
-              <option value="createdAt">Sort by created</option>
-              <option value="completedAt">Sort by completion</option>
-            </select>
+              <select
+                className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+                value={filters.statusGroup ?? 'open'}
+                onChange={(event) => setFilters({ statusGroup: event.target.value as StatusFilter })}
+              >
+                <option value="open">Open</option>
+                <option value="resolved">Resolved</option>
+                <option value="all">All</option>
+              </select>
+            </div>
           </div>
+
+          {role !== 'EMPLOYEE' && (
+            <FilterPanel
+              filters={filters}
+              setFilters={setFilters}
+              clearFilters={clearFilters}
+              hasActiveFilters={hasActiveFilters}
+              teamsList={teamsList}
+              assignableUsers={assignableUsers}
+              requesterOptions={requesterOptions}
+              onSaveSuccess={() => {
+                setToast({ message: 'View saved', type: 'success' });
+                loadTickets();
+              }}
+              onError={(msg) => setToast({ message: msg, type: 'error' })}
+            />
+          )}
         </div>
 
         {ticketError && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
+
+        {hasActiveFilters && role !== 'EMPLOYEE' && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {filters.statuses.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                Status: {filters.statuses.map(formatStatus).join(', ')}
+                <button
+                  type="button"
+                  onClick={() => setFilters({ statuses: [] })}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200"
+                  aria-label="Clear status"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {filters.priorities.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                Priority: {filters.priorities.join(', ')}
+                <button type="button" onClick={() => setFilters({ priorities: [] })} className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200" aria-label="Clear priority">×</button>
+              </span>
+            )}
+            {filters.teamIds.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                Team: {filters.teamIds.length} selected
+                <button type="button" onClick={() => setFilters({ teamIds: [] })} className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200" aria-label="Clear team">×</button>
+              </span>
+            )}
+            {filters.slaStatus.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                SLA: {filters.slaStatus.join(', ')}
+                <button type="button" onClick={() => setFilters({ slaStatus: [] })} className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200" aria-label="Clear SLA">×</button>
+              </span>
+            )}
+            {(filters.createdFrom || filters.createdTo || filters.updatedFrom || filters.updatedTo || filters.dueFrom || filters.dueTo) && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                Date range
+                <button
+                  type="button"
+                  onClick={() => setFilters({ createdFrom: '', createdTo: '', updatedFrom: '', updatedTo: '', dueFrom: '', dueTo: '' })}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200"
+                  aria-label="Clear dates"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+
         {loadingTickets && (
           <div className="mt-4 space-y-3">
             {Array.from({ length: 4 }).map((_, index) => (

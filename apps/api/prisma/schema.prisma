@@ -112,6 +112,7 @@ model User {
   lastAssignedTeams  Team[]        @relation("TeamLastAssigned")
   notifications      Notification[]
   actedNotifications Notification[] @relation("NotificationActor")
+  savedViews         SavedView[]
 }
 
 model Team {
@@ -131,6 +132,7 @@ model Team {
   routingRules RoutingRule[]
   slaPolicies  SlaPolicy[]
   lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
+  savedViews   SavedView[]
 }
 
 model Category {
@@ -364,4 +366,20 @@ model Notification {
   @@index([userId, isRead])
   @@index([userId, createdAt])
   @@index([ticketId])
+}
+
+model SavedView {
+  id        String   @id @default(uuid())
+  name      String
+  filters   Json
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([teamId])
 }

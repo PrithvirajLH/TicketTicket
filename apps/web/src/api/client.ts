@@ -187,12 +187,15 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function fetchTickets(params?: Record<string, string | number | undefined>) {
+export function fetchTickets(params?: Record<string, string | number | undefined | string[]>) {
   const query = new URLSearchParams();
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') {
-        query.append(key, String(value));
+      if (value === undefined || value === '') return;
+      if (Array.isArray(value)) {
+        if (value.length) query.set(key, value.join(','));
+      } else {
+        query.set(key, String(value));
       }
     });
   }
@@ -203,6 +206,41 @@ export function fetchTickets(params?: Record<string, string | number | undefined
 
 export function fetchTicketCounts() {
   return apiFetch<{ assignedToMe: number; triage: number; open: number }>('/tickets/counts');
+}
+
+export type SavedViewRecord = {
+  id: string;
+  name: string;
+  filters: Record<string, unknown>;
+  isDefault: boolean;
+  userId: string | null;
+  teamId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchSavedViews() {
+  return apiFetch<SavedViewRecord[]>('/saved-views');
+}
+
+export function createSavedView(payload: { name: string; filters: Record<string, unknown>; isDefault?: boolean; teamId?: string }) {
+  return apiFetch<SavedViewRecord>('/saved-views', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateSavedView(id: string, payload: { name?: string; filters?: Record<string, unknown>; isDefault?: boolean }) {
+  return apiFetch<SavedViewRecord>(`/saved-views/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSavedView(id: string) {
+  return apiFetch<{ deleted: boolean }>(`/saved-views/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 export function fetchTicketById(id: string) {

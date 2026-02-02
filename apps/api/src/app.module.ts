@@ -7,6 +7,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RoutingRulesModule } from './routing/routing.module';
+import { SavedViewsModule } from './saved-views/saved-views.module';
 import { SlasModule } from './slas/slas.module';
 import { TeamsModule } from './teams/teams.module';
 import { TicketsModule } from './tickets/tickets.module';
@@ -26,6 +27,7 @@ const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
     NotificationsModule,
     PrismaModule,
     RoutingRulesModule,
+    SavedViewsModule,
     SlasModule,
     TeamsModule,
     TicketsModule,

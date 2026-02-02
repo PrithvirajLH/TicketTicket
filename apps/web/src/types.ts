@@ -1,7 +1,29 @@
 export type Role = 'EMPLOYEE' | 'AGENT' | 'LEAD' | 'ADMIN';
 
 export type StatusFilter = 'open' | 'resolved' | 'all';
-export type SortField = 'createdAt' | 'completedAt';
+export type SortField = 'createdAt' | 'completedAt' | 'updatedAt';
+export type SortOrder = 'asc' | 'desc';
+export type SlaStatusFilter = 'on_track' | 'at_risk' | 'breached';
+
+export type TicketFilters = {
+  statusGroup?: StatusFilter;
+  statuses: string[];
+  priorities: string[];
+  teamIds: string[];
+  assigneeIds: string[];
+  requesterIds: string[];
+  slaStatus: SlaStatusFilter[];
+  createdFrom: string;
+  createdTo: string;
+  updatedFrom: string;
+  updatedTo: string;
+  dueFrom: string;
+  dueTo: string;
+  q: string;
+  scope: TicketScope;
+  sort: SortField;
+  order: SortOrder;
+};
 export type TicketScope = 'all' | 'assigned' | 'unassigned' | 'created';
 
 export type DashboardStats = {
