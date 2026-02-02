@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronUp, Copy, Info } from 'lucide-react';
 import {
@@ -17,8 +17,9 @@ import {
   type TicketDetail
 } from '../api/client';
 import type { Role } from '../types';
+import { RelativeTime } from '../components/RelativeTime';
 import { copyToClipboard } from '../utils/clipboard';
-import { formatDate, formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
+import { formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
@@ -564,7 +565,7 @@ export function TicketDetailPage({
                             )}
                             <p>{message.body}</p>
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">{formatDate(message.createdAt)}</p>
+                          <RelativeTime value={message.createdAt} className="text-xs text-slate-400 mt-1 block" />
                           {isOwn && isInternal && (
                             <span
                               className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${internalBadgeClasses(authorTeamRole)}`}
@@ -985,7 +986,7 @@ export function TicketDetailPage({
                         />
                         <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-[1fr_auto] sm:items-center">
                           <div className="flex items-center gap-2">
-                            <span className="whitespace-nowrap">{formatDate(event.createdAt)}</span>
+                            <RelativeTime value={event.createdAt} className="whitespace-nowrap" />
                             <span className="text-slate-300">•</span>
                             <span className="text-slate-400 truncate">by {actorLabel}</span>
                           </div>
@@ -1078,7 +1079,7 @@ function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; l
         <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
           <span className="inline-flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Created {formatDate(ticket.createdAt)}
+            Created <RelativeTime value={ticket.createdAt} />
           </span>
         </div>
       </div>
@@ -1136,7 +1137,7 @@ function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; l
 const SLA_RISK_WINDOW_MS = 4 * 60 * 60 * 1000;
 const SLA_FIRST_RESPONSE_RISK_MS = 2 * 60 * 60 * 1000;
 
-function renderSlaRow(label: string, sla: { label: string; tone: string; detail: string }) {
+function renderSlaRow(label: string, sla: { label: string; tone: string; detail: ReactNode }) {
   return (
     <div className="py-2 border-b border-slate-100">
       <div className="flex items-center justify-between">
@@ -1155,7 +1156,11 @@ function getFirstResponseSla(ticket: TicketDetail) {
     return {
       label: 'Responded',
       tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
-      detail: `Responded ${formatDate(ticket.firstResponseAt)}`
+      detail: (
+        <>
+          Responded <RelativeTime value={ticket.firstResponseAt} />
+        </>
+      )
     };
   }
 
@@ -1172,20 +1177,32 @@ function getFirstResponseSla(ticket: TicketDetail) {
     return {
       label: 'Breached',
       tone: 'border-rose-200 bg-rose-100 text-rose-700',
-      detail: `Due ${formatDate(ticket.firstResponseDueAt)}`
+      detail: (
+        <>
+          Due <RelativeTime value={ticket.firstResponseDueAt} />
+        </>
+      )
     };
   }
   if (dueMs <= SLA_FIRST_RESPONSE_RISK_MS) {
     return {
       label: 'At risk',
       tone: 'border-amber-200 bg-amber-100 text-amber-700',
-      detail: `Due ${formatDate(ticket.firstResponseDueAt)}`
+      detail: (
+        <>
+          Due <RelativeTime value={ticket.firstResponseDueAt} />
+        </>
+      )
     };
   }
   return {
     label: 'Open',
     tone: 'border-sky-200 bg-sky-100 text-sky-700',
-    detail: `Due ${formatDate(ticket.firstResponseDueAt)}`
+    detail: (
+      <>
+        Due <RelativeTime value={ticket.firstResponseDueAt} />
+      </>
+    )
   };
 }
 
@@ -1194,7 +1211,11 @@ function getResolutionSla(ticket: TicketDetail) {
     return {
       label: 'Met',
       tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
-      detail: `Completed ${formatDate(ticket.completedAt)}`
+      detail: (
+        <>
+          Completed <RelativeTime value={ticket.completedAt} />
+        </>
+      )
     };
   }
 
@@ -1213,7 +1234,13 @@ function getResolutionSla(ticket: TicketDetail) {
     return {
       label: 'Paused',
       tone: 'border-amber-200 bg-amber-100 text-amber-700',
-      detail: ticket.slaPausedAt ? `Paused ${formatDate(ticket.slaPausedAt)}` : 'Paused'
+      detail: ticket.slaPausedAt ? (
+        <>
+          Paused <RelativeTime value={ticket.slaPausedAt} />
+        </>
+      ) : (
+        'Paused'
+      )
     };
   }
 
@@ -1222,19 +1249,31 @@ function getResolutionSla(ticket: TicketDetail) {
     return {
       label: 'Breached',
       tone: 'border-rose-200 bg-rose-100 text-rose-700',
-      detail: `Due ${formatDate(ticket.dueAt)}`
+      detail: (
+        <>
+          Due <RelativeTime value={ticket.dueAt} />
+        </>
+      )
     };
   }
   if (dueMs <= SLA_RISK_WINDOW_MS) {
     return {
       label: 'At risk',
       tone: 'border-amber-200 bg-amber-100 text-amber-700',
-      detail: `Due ${formatDate(ticket.dueAt)}`
+      detail: (
+        <>
+          Due <RelativeTime value={ticket.dueAt} />
+        </>
+      )
     };
   }
   return {
     label: 'On track',
     tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
-    detail: `Due ${formatDate(ticket.dueAt)}`
+    detail: (
+      <>
+        Due <RelativeTime value={ticket.dueAt} />
+      </>
+    )
   };
 }

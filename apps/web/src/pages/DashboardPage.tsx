@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchTickets, type TicketRecord } from '../api/client';
+import { RelativeTime } from '../components/RelativeTime';
 import type { DashboardStats } from '../types';
-import { formatDate, formatStatus, statusBadgeClass } from '../utils/format';
+import { formatStatus, statusBadgeClass } from '../utils/format';
 
 export function DashboardPage({ refreshKey }: { refreshKey: number }) {
   const navigate = useNavigate();
@@ -110,7 +111,7 @@ export function DashboardPage({ refreshKey }: { refreshKey: number }) {
                 >
                   {formatStatus(ticket.status)}
                 </span>
-                <span className="text-xs text-slate-500">{formatDate(ticket.updatedAt)}</span>
+                <RelativeTime value={ticket.updatedAt} className="text-xs text-slate-500" />
               </div>
             </button>
           ))}

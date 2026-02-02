@@ -13,10 +13,11 @@ import {
   type UserRef
 } from '../api/client';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { RelativeTime } from '../components/RelativeTime';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useTicketSelection } from '../hooks/useTicketSelection';
 import type { Role, SortField, StatusFilter, TicketScope } from '../types';
-import { formatDate, formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
+import { formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
 
 export function TicketsPage({
   role,
@@ -454,7 +455,7 @@ export function TicketsPage({
                     >
                       {formatStatus(ticket.status)}
                     </span>
-                    <span className="text-xs text-slate-400">{formatDate(ticket.createdAt)}</span>
+                    <RelativeTime value={ticket.createdAt} className="text-xs text-slate-400" />
                   </div>
                 </div>
               </div>

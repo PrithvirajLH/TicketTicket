@@ -8,7 +8,8 @@ import {
   type TeamRef,
   type TicketRecord
 } from '../api/client';
-import { formatDate, formatStatus, formatTicketId, getSlaTone, statusBadgeClass } from '../utils/format';
+import { RelativeTime } from '../components/RelativeTime';
+import { formatStatus, formatTicketId, getSlaTone, statusBadgeClass } from '../utils/format';
 
 const TRIAGE_COLUMNS = [
   { key: 'NEW', label: 'New' },
@@ -328,7 +329,7 @@ export function TriageBoardPage({
                           {ticket.assignee?.displayName ?? 'Unassigned'}
                         </p>
                         <p className="mt-1 text-[10px] text-slate-400">
-                          {formatTicketId(ticket)} · {formatDate(ticket.updatedAt)}
+                          {formatTicketId(ticket)} · <RelativeTime value={ticket.updatedAt} />
                         </p>
                         <div className="mt-2">
                           {(() => {

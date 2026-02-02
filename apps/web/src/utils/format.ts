@@ -22,6 +22,68 @@ export function formatDate(value: string | null | undefined) {
   });
 }
 
+/** Full date/time for tooltips: "January 29, 2026 at 2:45 PM" */
+export function formatDateLong(value: string | Date | null | undefined): string {
+  if (value == null) {
+    return '—';
+  }
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  const datePart = date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+  const timePart = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  return `${datePart} at ${timePart}`;
+}
+
+/**
+ * Relative time for display: "Just now", "5 minutes ago", "2 hours ago", "3 days ago", or "Jan 29, 2026" for >= 7 days.
+ */
+export function formatRelative(value: string | Date | null | undefined): string {
+  if (value == null) {
+    return '—';
+  }
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  const now = Date.now();
+  const ms = now - date.getTime();
+  const absMs = Math.abs(ms);
+  const seconds = Math.floor(absMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (ms < 0) {
+    return formatDate(date.toISOString());
+  }
+  if (seconds < 60) {
+    return 'Just now';
+  }
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+  if (days < 7) {
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+  }
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
 export function departmentCode(name?: string | null) {
   if (!name) {
     return 'NA';
