@@ -14,7 +14,8 @@ import {
   unfollowTicket,
   type TeamMember,
   type TeamRef,
-  type TicketDetail
+  type TicketDetail,
+  type TicketMessage
 } from '../api/client';
 import type { Role } from '../types';
 import { MessageBody } from '../components/MessageBody';
@@ -234,17 +235,42 @@ export function TicketDetailPage({
 
   async function handleReply() {
     const bodyToSend = htmlMentionsToMarkdown(messageBody);
-    if (!ticketId || !bodyToSend.trim()) {
+    if (!ticketId || !bodyToSend.trim() || !ticket) {
       return;
     }
     setTicketError(null);
-    try {
-      await addTicketMessage(ticketId, { body: bodyToSend, type: messageType });
-      setMessageBody('');
-      await loadTicketDetail(ticketId);
-    } catch (error) {
-      setTicketError('Unable to send reply.');
-    }
+    const optimisticId = `opt-${Date.now()}`;
+    const optimisticMessage: TicketMessage = {
+      id: optimisticId,
+      body: bodyToSend,
+      type: messageType,
+      createdAt: new Date().toISOString(),
+      author: { id: 'pending', email: currentEmail, displayName: currentEmail.split('@')[0] || 'You' }
+    };
+    setTicket((prev) =>
+      prev ? { ...prev, messages: [...prev.messages, optimisticMessage] } : prev
+    );
+    setMessageBody('');
+    addTicketMessage(ticketId, { body: bodyToSend, type: messageType })
+      .then((serverMessage) => {
+        setTicket((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === optimisticId ? serverMessage : m
+                )
+              }
+            : prev
+        );
+        loadTicketDetail(ticketId);
+      })
+      .catch(() => {
+        setTicket((prev) =>
+          prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev
+        );
+        setTicketError('Unable to send reply.');
+      });
   }
 
   async function handleAssignSelf() {
@@ -521,17 +547,20 @@ export function TicketDetailPage({
             )}
             {!loadingDetail && !ticket && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
             {ticket && (
-              <>
-                <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-4">
+              <div className="flex flex-col flex-1 min-h-0 mt-4">
+                <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4">
                   {ticket.messages.length === 0 && (
                     <div className="text-sm text-slate-500">No messages yet. Start the conversation.</div>
                   )}
                   {ticket.messages.map((message) => {
-                    const isOwn = message.author.email === currentEmail;
+                    const isOptimistic =
+                      typeof message.id === 'string' && message.id.startsWith('opt-');
+                    const isOwn = message.author?.email === currentEmail;
                     const isInternal = message.type === 'INTERNAL';
-                    const authorTeamRole =
-                      memberRoleLookup.get(message.author.id) ??
-                      (message.author.email === currentEmail ? role : undefined);
+                    const authorTeamRole = isOptimistic
+                      ? role
+                      : memberRoleLookup.get(message.author.id) ??
+                        (message.author?.email === currentEmail ? role : undefined);
                     const internalLabel = internalRoleLabel(authorTeamRole);
                     return (
                       <div
@@ -539,7 +568,7 @@ export function TicketDetailPage({
                         className={`flex items-start gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
                       >
                         <div className="h-9 w-9 flex-shrink-0 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-xs font-semibold shadow-soft">
-                          {initialsFor(message.author.displayName)}
+                          {initialsFor(message.author?.displayName ?? currentEmail)}
                         </div>
                         <div className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
                           <div
@@ -556,7 +585,7 @@ export function TicketDetailPage({
                             {!isOwn && (
                               <div className="flex items-center gap-2 mb-1">
                                 <p className="text-xs font-semibold text-slate-500">
-                                  {message.author.displayName}
+                                  {message.author?.displayName ?? message.author?.email ?? '—'}
                                 </p>
                                 {isInternal && (
                                   <span
@@ -569,7 +598,10 @@ export function TicketDetailPage({
                             )}
                             <MessageBody body={message.body} invert={isOwn && !isInternal} />
                           </div>
-                          <RelativeTime value={message.createdAt} className="text-xs text-slate-400 mt-1 block" />
+                          <span className="text-xs text-slate-400 mt-1 block">
+                            <RelativeTime value={message.createdAt} />
+                            {isOwn && isOptimistic && <span className="ml-2 opacity-70">Sending…</span>}
+                          </span>
                           {isOwn && isInternal && (
                             <span
                               className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${internalBadgeClasses(authorTeamRole)}`}
@@ -583,7 +615,7 @@ export function TicketDetailPage({
                   })}
                   <div ref={messagesEndRef} />
                 </div>
-                <div className="mt-4 border-t border-slate-200/60 pt-4">
+                <div className="flex-shrink-0 border-t border-slate-200/60 pt-4 mt-4">
                   {role !== 'EMPLOYEE' && (
                     <div className="mb-3 inline-flex rounded-full border border-slate-200 bg-white/80 p-1 text-xs">
                       <button
@@ -636,7 +668,7 @@ export function TicketDetailPage({
                     </button>
                   </div>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
