@@ -389,6 +389,7 @@ function App() {
           activeKey={navKey}
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
+          onCreateTicket={() => setShowCreateModal(true)}
         />
 
         <main
@@ -400,10 +401,8 @@ function App() {
             title={viewTitle}
             subtitle={viewSubtitle}
             currentEmail={currentEmail}
-            currentLabel={currentPersona.label}
             personas={personas}
             onEmailChange={setCurrentEmail}
-            onCreateTicket={() => setShowCreateModal(true)}
             onOpenSearch={commandPalette.open}
             notificationProps={{
               notifications: notifications.notifications,

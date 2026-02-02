@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, type LucideIcon } from 'lucide-react';
 import type { Role } from '../types';
 
 export type SidebarItem = {
@@ -14,7 +14,8 @@ export function Sidebar({
   items,
   activeKey,
   onSelect,
-  currentRole
+  currentRole,
+  onCreateTicket
 }: {
   collapsed: boolean;
   onToggle: () => void;
@@ -22,6 +23,7 @@ export function Sidebar({
   activeKey: string;
   onSelect: (key: string) => void;
   currentRole: Role;
+  onCreateTicket?: () => void;
 }) {
   return (
     <aside
@@ -78,6 +80,19 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      {onCreateTicket && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onCreateTicket}
+            className={`w-full inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-slate-800 transition ${collapsed ? 'justify-center' : ''}`}
+          >
+            <Plus className="h-5 w-5 flex-shrink-0" />
+            {!collapsed && <span>New Ticket</span>}
+          </button>
+        </div>
+      )}
 
       <div className="mt-6 border-t border-slate-200/60 pt-4 flex items-center justify-between">
         {!collapsed && <span className="text-xs text-slate-600">Secure internal system</span>}

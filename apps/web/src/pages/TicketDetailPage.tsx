@@ -21,6 +21,7 @@ import type { Role } from '../types';
 import { MessageBody } from '../components/MessageBody';
 import { RelativeTime } from '../components/RelativeTime';
 import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEditor';
+import { SlaCountdownTimer } from '../components/SlaCountdownTimer';
 import { copyToClipboard } from '../utils/clipboard';
 import { htmlMentionsToMarkdown } from '../utils/messageBody';
 import { formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
@@ -671,47 +672,6 @@ export function TicketDetailPage({
               </div>
             )}
           </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="glass-card overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setDetailsExpanded(!detailsExpanded)}
-              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
-                  <Info className="h-4 w-4 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-slate-900">Ticket Details</p>
-                  <p className="text-xs text-slate-500">
-                    {ticket ? `${ticket.priority} · ${ticket.assignedTeam?.name ?? 'Unassigned'}` : 'Loading...'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {ticket && (
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusBadgeClass(ticket.status)}`}>
-                    {formatStatus(ticket.status)}
-                  </span>
-                )}
-                {detailsExpanded ? (
-                  <ChevronUp className="h-5 w-5 text-slate-400" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-slate-400" />
-                )}
-              </div>
-            </button>
-            <div
-              className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                detailsExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
-              }`}
-            >
-              <TicketDetailsCard ticket={ticket} loading={loadingDetail} />
-            </div>
-          </div>
 
           {ticket && (
             <div className="glass-card p-6">
@@ -799,48 +759,15 @@ export function TicketDetailPage({
               </div>
             </div>
           )}
+        </div>
 
+        <div className="space-y-6">
           {ticket && (
-            <div className="glass-card p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Followers</h3>
-                  <p className="text-sm text-slate-500">
-                    {followers.length === 0 ? 'No followers yet.' : `${followers.length} watching`}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleFollowToggle}
-                  disabled={followLoading}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold shadow-sm transition ${
-                    isFollowing
-                      ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      : 'bg-slate-900 text-white hover:bg-slate-800'
-                  }`}
-                >
-                  {isFollowing ? 'Unfollow' : 'Follow'}
-                </button>
-              </div>
-              {followError && <p className="mt-3 text-sm text-red-600">{followError}</p>}
-              {followers.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {followers.map((follower) => (
-                    <div key={follower.id} className="flex items-center gap-3 text-sm text-slate-700">
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-[11px] font-semibold">
-                        {initialsFor(follower.user.displayName)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900 truncate">{follower.user.displayName}</p>
-                        <p className="text-xs text-slate-500 truncate">{follower.user.email}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="space-y-3">
+              <SlaCountdownTimer type="first_response" ticket={ticket} />
+              <SlaCountdownTimer type="resolution" ticket={ticket} />
             </div>
           )}
-
           {canManage && (
             <div className="glass-card p-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -1003,6 +930,85 @@ export function TicketDetailPage({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+          <div className="glass-card overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setDetailsExpanded(!detailsExpanded)}
+              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
+                  <Info className="h-4 w-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-slate-900">Ticket Details</p>
+                  <p className="text-xs text-slate-500">
+                    {ticket ? `${ticket.priority} · ${ticket.assignedTeam?.name ?? 'Unassigned'}` : 'Loading...'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {ticket && (
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusBadgeClass(ticket.status)}`}>
+                    {formatStatus(ticket.status)}
+                  </span>
+                )}
+                {detailsExpanded ? (
+                  <ChevronUp className="h-5 w-5 text-slate-400" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-slate-400" />
+                )}
+              </div>
+            </button>
+            <div
+              className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                detailsExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <TicketDetailsCard ticket={ticket} loading={loadingDetail} />
+            </div>
+          </div>
+
+          {ticket && (
+            <div className="glass-card p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Followers</h3>
+                  <p className="text-sm text-slate-500">
+                    {followers.length === 0 ? 'No followers yet.' : `${followers.length} watching`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleFollowToggle}
+                  disabled={followLoading}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold shadow-sm transition ${
+                    isFollowing
+                      ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      : 'bg-slate-900 text-white hover:bg-slate-800'
+                  }`}
+                >
+                  {isFollowing ? 'Unfollow' : 'Follow'}
+                </button>
+              </div>
+              {followError && <p className="mt-3 text-sm text-red-600">{followError}</p>}
+              {followers.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {followers.map((follower) => (
+                    <div key={follower.id} className="flex items-center gap-3 text-sm text-slate-700">
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-[11px] font-semibold">
+                        {initialsFor(follower.user.displayName)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900 truncate">{follower.user.displayName}</p>
+                        <p className="text-xs text-slate-500 truncate">{follower.user.email}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
