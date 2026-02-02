@@ -11,12 +11,15 @@
     "format": "echo \"No format configured\""
   },
   "dependencies": {
+    "dompurify": "^3.3.1",
     "lucide-react": "^0.473.0",
+    "marked": "^17.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^6.30.1"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^19.2.9",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.5.0",

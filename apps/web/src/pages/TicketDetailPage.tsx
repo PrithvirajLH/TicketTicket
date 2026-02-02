@@ -17,8 +17,11 @@ import {
   type TicketDetail
 } from '../api/client';
 import type { Role } from '../types';
+import { MessageBody } from '../components/MessageBody';
 import { RelativeTime } from '../components/RelativeTime';
+import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEditor';
 import { copyToClipboard } from '../utils/clipboard';
+import { htmlMentionsToMarkdown } from '../utils/messageBody';
 import { formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -68,7 +71,7 @@ export function TicketDetailPage({
   const [linkCopied, setLinkCopied] = useState(false);
   const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const replyEditorRef = useRef<RichTextEditorRef | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
   const navigate = useNavigate();
   const statusEvents = ticket ? ticket.events.filter((event) => event.type === 'TICKET_STATUS_CHANGED') : [];
@@ -187,7 +190,7 @@ export function TicketDetailPage({
         case 'R':
           if (!event.ctrlKey && !event.metaKey && !event.altKey) {
             event.preventDefault();
-            replyTextareaRef.current?.focus();
+            replyEditorRef.current?.focus();
           }
           break;
         case 'a':
@@ -230,12 +233,13 @@ export function TicketDetailPage({
   }
 
   async function handleReply() {
-    if (!ticketId || !messageBody.trim()) {
+    const bodyToSend = htmlMentionsToMarkdown(messageBody);
+    if (!ticketId || !bodyToSend.trim()) {
       return;
     }
     setTicketError(null);
     try {
-      await addTicketMessage(ticketId, { body: messageBody, type: messageType });
+      await addTicketMessage(ticketId, { body: bodyToSend, type: messageType });
       setMessageBody('');
       await loadTicketDetail(ticketId);
     } catch (error) {
@@ -563,7 +567,7 @@ export function TicketDetailPage({
                                 )}
                               </div>
                             )}
-                            <p>{message.body}</p>
+                            <MessageBody body={message.body} invert={isOwn && !isInternal} />
                           </div>
                           <RelativeTime value={message.createdAt} className="text-xs text-slate-400 mt-1 block" />
                           {isOwn && isInternal && (
@@ -607,14 +611,22 @@ export function TicketDetailPage({
                     </div>
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <textarea
-                      ref={replyTextareaRef}
-                      className="flex-1 rounded-2xl border border-slate-200 bg-white/80 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      rows={2}
-                      placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
-                      value={messageBody}
-                      onChange={(event) => setMessageBody(event.target.value)}
-                    />
+                    <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 bg-white/80 focus-within:ring-2 focus-within:ring-slate-900/10">
+                      <RichTextEditor
+                        ref={replyEditorRef}
+                        value={messageBody}
+                        onChange={setMessageBody}
+                        placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
+                        users={teamMembers.map((m) => m.user)}
+                        cannedVariables={{
+                          ticketId: ticket?.id,
+                          ticketSubject: ticket?.subject,
+                          requesterName: ticket?.requester?.displayName ?? ticket?.requester?.email,
+                        }}
+                        minRows={2}
+                        maxRows={12}
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={handleReply}

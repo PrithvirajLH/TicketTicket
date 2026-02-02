@@ -76,3 +76,13 @@ body {
     transform: translateX(100%);
   }
 }
+
+/* Message body: @mentions as linked-style text */
+.message-body .mention {
+  @apply font-medium text-sky-600;
+}
+
+/* Inverted (dark bubble): lighter mention color */
+.message-body.prose-invert .mention {
+  @apply text-sky-200;
+}

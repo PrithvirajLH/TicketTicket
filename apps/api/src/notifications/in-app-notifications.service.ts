@@ -286,4 +286,22 @@ export class InAppNotificationsService {
       ticketId,
     });
   }
+
+  async notifyMentioned(
+    ticketId: string,
+    mentionedUserIds: string[],
+    actorId: string,
+    ticketSubject: string,
+  ) {
+    const filtered = mentionedUserIds.filter((id) => id !== actorId);
+    if (filtered.length === 0) return;
+
+    return this.createMany(filtered, {
+      type: NotificationType.TICKET_MENTIONED,
+      title: 'You were mentioned on a ticket',
+      body: ticketSubject,
+      ticketId,
+      actorId,
+    });
+  }
 }

@@ -117,6 +117,20 @@ export class NotificationsService {
     ).catch((error) => console.error('Failed to create in-app notification', error));
   }
 
+  async notifyMentioned(
+    ticketId: string,
+    mentionedUserIds: string[],
+    actorId: string,
+    ticketSubject: string,
+  ) {
+    await this.inAppNotifications.notifyMentioned(
+      ticketId,
+      mentionedUserIds,
+      actorId,
+      ticketSubject,
+    ).catch((error) => console.error('Failed to create mention notification', error));
+  }
+
   async ticketAssigned(ticket: { id: string }, actor: AuthUser) {
     const fullTicket = await this.loadTicket(ticket.id);
     if (!fullTicket) {

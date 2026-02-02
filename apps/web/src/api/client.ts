@@ -243,6 +243,40 @@ export function deleteSavedView(id: string) {
   });
 }
 
+export type CannedResponseRecord = {
+  id: string;
+  name: string;
+  content: string;
+  userId: string | null;
+  teamId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchCannedResponses() {
+  return apiFetch<CannedResponseRecord[]>('/canned-responses');
+}
+
+export function createCannedResponse(payload: { name: string; content: string; teamId?: string }) {
+  return apiFetch<CannedResponseRecord>('/canned-responses', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateCannedResponse(id: string, payload: { name?: string; content?: string }) {
+  return apiFetch<CannedResponseRecord>(`/canned-responses/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteCannedResponse(id: string) {
+  return apiFetch<{ deleted: boolean }>(`/canned-responses/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export function fetchTicketById(id: string) {
   return apiFetch<TicketDetail>(`/tickets/${id}`);
 }

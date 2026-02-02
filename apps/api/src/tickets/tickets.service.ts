@@ -503,6 +503,64 @@ export class TicketsService {
     });
 
     await this.ensureFollower(ticketId, user.id);
+
+    // Parse mentions: (user:uuid) from markdown or data-user-id="uuid" from HTML (WYSIWYG)
+    const markdownMentions = [...payload.body.matchAll(/\(user:([a-f0-9-]{36})\)/gi)].map((m) => m[1]);
+    const htmlMentions = [...payload.body.matchAll(/data-user-id="([a-f0-9-]{36})"/gi)].map((m) => m[1]);
+    const mentionedIds = [...new Set([...markdownMentions, ...htmlMentions])];
+    const isInternalMessage = (payload.type ?? MessageType.PUBLIC) === MessageType.INTERNAL;
+    let allowedMentionedIds: string[] = [];
+    if (mentionedIds.length > 0) {
+      const fullTicket = await this.prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: { accessGrants: true },
+      });
+      if (fullTicket) {
+        const mentionedUsers = await this.prisma.user.findMany({
+          where: { id: { in: mentionedIds } },
+          include: { teamMemberships: true },
+        });
+        const ticketForView = {
+          requesterId: fullTicket.requesterId,
+          assignedTeamId: fullTicket.assignedTeamId,
+          assigneeId: fullTicket.assigneeId,
+          accessGrants: fullTicket.accessGrants.map((g) => ({ teamId: g.teamId })),
+        };
+        for (const u of mentionedUsers) {
+          if (isInternalMessage && u.role === UserRole.EMPLOYEE) {
+            continue;
+          }
+          const teamIds = u.teamMemberships.map((m) => m.teamId);
+          const canView =
+            teamIds.length > 0
+              ? teamIds.some((teamId) =>
+                  this.canViewTicket(
+                    { id: u.id, email: u.email, role: u.role, teamId },
+                    ticketForView,
+                  ),
+                )
+              : this.canViewTicket(
+                  { id: u.id, email: u.email, role: u.role, teamId: null },
+                  ticketForView,
+                );
+          if (canView) {
+            allowedMentionedIds.push(u.id);
+          }
+        }
+      }
+      for (const mentionedId of allowedMentionedIds) {
+        try {
+          await this.ensureFollower(ticketId, mentionedId);
+        } catch (err) {
+          console.error(`Failed to add mention follower ${mentionedId} for ticket ${ticketId}`, err);
+        }
+      }
+      if (allowedMentionedIds.length > 0) {
+        await this.safeNotify(() =>
+          this.notifications.notifyMentioned(ticketId, allowedMentionedIds, user.id, ticket.subject),
+        );
+      }
+    }
     await this.safeNotify(() =>
       this.notifications.messageAdded(ticketId, message, user),
     );

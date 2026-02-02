@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import path from 'path';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { CannedResponsesModule } from './canned-responses/canned-responses.module';
 import { CategoriesModule } from './categories/categories.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -23,6 +24,7 @@ const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
       envFilePath: path.resolve(process.cwd(), envFile),
     }),
     AuthModule,
+    CannedResponsesModule,
     CategoriesModule,
     NotificationsModule,
     PrismaModule,

@@ -113,6 +113,7 @@ model User {
   notifications      Notification[]
   actedNotifications Notification[] @relation("NotificationActor")
   savedViews         SavedView[]
+  cannedResponses    CannedResponse[]
 }
 
 model Team {
@@ -133,6 +134,7 @@ model Team {
   slaPolicies  SlaPolicy[]
   lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
   savedViews   SavedView[]
+  cannedResponses CannedResponse[]
 }
 
 model Category {
@@ -377,6 +379,21 @@ model SavedView {
   teamId    String?
   team      Team?    @relation(fields: [teamId], references: [id])
   isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([teamId])
+}
+
+model CannedResponse {
+  id        String   @id @default(uuid())
+  name      String
+  content   String   @db.Text
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

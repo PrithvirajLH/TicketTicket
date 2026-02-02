@@ -668,9 +668,9 @@ Replace the plain textarea with a rich text editor that supports formatting, men
    - Personal and team-shared templates
    - Variables support: `{{ticket.id}}`, `{{requester.name}}`
 
-4. **Preview:**
-   - Toggle between edit and preview mode
-   - Or split view with live preview
+4. **Editor behaviour:**
+   - Single WYSIWYG (contentEditable) field: formatting (bold, italic, lists, etc.) is visible in the edit area; no separate preview mode or toggle is required.
+   - Sent messages are rendered in the thread using the same HTML (via MessageBody).
 
 #### Files to Create/Modify
 
