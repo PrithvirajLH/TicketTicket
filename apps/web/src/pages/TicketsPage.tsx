@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   bulkAssignTickets,
   bulkPriorityTickets,
@@ -37,6 +37,7 @@ export function TicketsPage({
   teamsList: TeamRef[];
 }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } = useFilters(
     presetScope,
     presetStatus
@@ -55,8 +56,6 @@ export function TicketsPage({
   const focusedIndexRef = useRef(0);
 
   useFocusSearchOnShortcut(searchInputRef);
-
-  const apiParamsKey = useMemo(() => JSON.stringify(apiParams), [apiParams]);
 
   useEffect(() => {
     focusedIndexRef.current = focusedTicketIndex;
@@ -86,9 +85,11 @@ export function TicketsPage({
     }
   }, [apiParams, filters.statusGroup, filters.sort]);
 
+  // Refetch when URL search params or refreshKey change (URL is source of truth for filters)
+  const searchParamsString = searchParams.toString();
   useEffect(() => {
     loadTickets();
-  }, [apiParamsKey, refreshKey, loadTickets]);
+  }, [searchParamsString, refreshKey, loadTickets]);
 
   const filteredTickets = tickets;
   const ticketIds = useMemo(() => filteredTickets.map((t) => t.id), [filteredTickets]);

@@ -68,15 +68,30 @@ export class TicketsService {
     return new Date(dateStr);
   }
 
+  /** Normalize query param that may be string or array (query params often arrive as strings). */
+  private toArray<T>(value: T | T[] | string | undefined): T[] {
+    if (value == null) return [];
+    if (Array.isArray(value)) return value.filter((v): v is T => v != null && v !== '');
+    if (typeof value === 'string') return value.split(',').map((s) => s.trim() as T).filter(Boolean);
+    return [];
+  }
+
   async list(query: ListTicketsDto, user: AuthUser) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
 
+    const statuses = this.toArray<string>(query.statuses as string | string[] | undefined);
+    const priorities = this.toArray<string>(query.priorities as string | string[] | undefined);
+    const teamIds = this.toArray<string>(query.teamIds as string | string[] | undefined);
+    const assigneeIds = this.toArray<string>(query.assigneeIds as string | string[] | undefined);
+    const requesterIds = this.toArray<string>(query.requesterIds as string | string[] | undefined);
+    const slaStatus = this.toArray<string>(query.slaStatus as string | string[] | undefined);
+
     const filters: Prisma.TicketWhereInput[] = [];
 
-    if (query.statuses?.length) {
-      filters.push({ status: { in: query.statuses } });
+    if (statuses.length) {
+      filters.push({ status: { in: statuses as TicketStatus[] } });
     } else if (query.status) {
       filters.push({ status: query.status });
     } else if (query.statusGroup && query.statusGroup !== 'all') {
@@ -91,8 +106,8 @@ export class TicketsService {
       }
     }
 
-    if (query.priorities?.length) {
-      filters.push({ priority: { in: query.priorities } });
+    if (priorities.length) {
+      filters.push({ priority: { in: priorities as TicketPriority[] } });
     } else if (query.priority) {
       filters.push({ priority: query.priority });
     }
@@ -105,20 +120,20 @@ export class TicketsService {
       filters.push({ requesterId: user.id });
     }
 
-    if (query.teamIds?.length) {
-      filters.push({ assignedTeamId: { in: query.teamIds } });
+    if (teamIds.length) {
+      filters.push({ assignedTeamId: { in: teamIds } });
     } else if (query.teamId) {
       filters.push({ assignedTeamId: query.teamId });
     }
 
-    if (query.assigneeIds?.length) {
-      filters.push({ assigneeId: { in: query.assigneeIds } });
+    if (assigneeIds.length) {
+      filters.push({ assigneeId: { in: assigneeIds } });
     } else if (query.assigneeId) {
       filters.push({ assigneeId: query.assigneeId });
     }
 
-    if (query.requesterIds?.length) {
-      filters.push({ requesterId: { in: query.requesterIds } });
+    if (requesterIds.length) {
+      filters.push({ requesterId: { in: requesterIds } });
     } else if (query.requesterId) {
       filters.push({ requesterId: query.requesterId });
     }
@@ -142,12 +157,12 @@ export class TicketsService {
       filters.push({ dueAt: { lt: this.toEndExclusive(query.dueTo) } });
     }
 
-    if (query.slaStatus?.length) {
+    if (slaStatus.length) {
       const now = new Date();
       const riskEnd = new Date(now.getTime() + 4 * 60 * 60 * 1000);
       const slaConditions: Prisma.TicketWhereInput[] = [];
       const notWaiting = { status: { notIn: this.WAITING_STATUSES } };
-      if (query.slaStatus.includes('breached')) {
+      if (slaStatus.includes('breached')) {
         slaConditions.push({
           AND: [
             { completedAt: null },
@@ -156,7 +171,7 @@ export class TicketsService {
           ],
         });
       }
-      if (query.slaStatus.includes('at_risk')) {
+      if (slaStatus.includes('at_risk')) {
         slaConditions.push({
           AND: [
             { completedAt: null },
@@ -165,7 +180,7 @@ export class TicketsService {
           ],
         });
       }
-      if (query.slaStatus.includes('on_track')) {
+      if (slaStatus.includes('on_track')) {
         slaConditions.push({
           AND: [
             { completedAt: null },
@@ -175,7 +190,7 @@ export class TicketsService {
         });
       }
       if (slaConditions.length) {
-        filters.push({ OR: slaConditions } });
+        filters.push({ OR: slaConditions });
       }
     }
 
