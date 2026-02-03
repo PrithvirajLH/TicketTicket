@@ -13,8 +13,16 @@ import { UpdateRoutingRuleDto } from './dto/update-routing-rule.dto';
 export class RoutingRulesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list() {
+  async list(user: AuthUser) {
+    if (user.role === UserRole.TEAM_ADMIN && !user.primaryTeamId) {
+      throw new ForbiddenException('Team administrator must have a primary team set');
+    }
+    const where =
+      user.role === UserRole.TEAM_ADMIN && user.primaryTeamId
+        ? { teamId: user.primaryTeamId }
+        : {};
     const data = await this.prisma.routingRule.findMany({
+      where,
       include: { team: true },
       orderBy: [{ priority: 'asc' }, { name: 'asc' }],
     });
@@ -23,7 +31,7 @@ export class RoutingRulesService {
   }
 
   async create(payload: CreateRoutingRuleDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, payload.teamId);
 
     const keywords = this.normalizeKeywords(payload.keywords);
 
@@ -40,13 +48,12 @@ export class RoutingRulesService {
   }
 
   async update(id: string, payload: UpdateRoutingRuleDto, user: AuthUser) {
-    this.ensureAdmin(user);
-
     const rule = await this.prisma.routingRule.findUnique({ where: { id } });
 
     if (!rule) {
       throw new NotFoundException('Routing rule not found');
     }
+    this.ensureTeamAdminOrOwner(user, rule.teamId);
 
     return this.prisma.routingRule.update({
       where: { id },
@@ -64,23 +71,23 @@ export class RoutingRulesService {
   }
 
   async remove(id: string, user: AuthUser) {
-    this.ensureAdmin(user);
-
     const rule = await this.prisma.routingRule.findUnique({ where: { id } });
 
     if (!rule) {
       throw new NotFoundException('Routing rule not found');
     }
 
+    this.ensureTeamAdminOrOwner(user, rule.teamId);
+
     await this.prisma.routingRule.delete({ where: { id } });
 
     return { id };
   }
 
-  private ensureAdmin(user: AuthUser) {
-    if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Admin access required');
-    }
+  private ensureTeamAdminOrOwner(user: AuthUser, teamId: string) {
+    if (user.role === UserRole.OWNER) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    throw new ForbiddenException('Team admin or owner access required');
   }
 
   private normalizeKeywords(keywords: string[]) {

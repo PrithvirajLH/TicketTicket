@@ -8,13 +8,12 @@ import { UserRole } from '@prisma/client';
 import { AuthRequest } from './current-user.decorator';
 
 @Injectable()
-export class AdminGuard implements CanActivate {
+export class OwnerGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<AuthRequest>();
     const user = request.user;
-    const isAdmin = user?.role === UserRole.OWNER || user?.role === UserRole.TEAM_ADMIN;
-    if (!user || !isAdmin) {
-      throw new ForbiddenException('This action is restricted to owners and team administrators');
+    if (!user || user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('This action is restricted to owners only');
     }
     return true;
   }

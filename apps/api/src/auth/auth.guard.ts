@@ -58,6 +58,7 @@ export class AuthGuard implements CanActivate {
       role: user.role,
       teamId: membership?.teamId ?? null,
       teamRole: membership?.role ?? null,
+      primaryTeamId: user.primaryTeamId ?? null,
     };
 
     return true;

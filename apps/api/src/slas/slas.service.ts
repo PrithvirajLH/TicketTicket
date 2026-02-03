@@ -31,7 +31,7 @@ export class SlasService {
   };
 
   async list(query: ListSlasDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, query.teamId);
     await this.ensureTeam(query.teamId);
 
     const policies = await this.prisma.slaPolicy.findMany({
@@ -59,7 +59,7 @@ export class SlasService {
   }
 
   async update(teamId: string, payload: UpdateSlaPolicyDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, teamId);
     await this.ensureTeam(teamId);
 
     const policies = payload.policies ?? [];
@@ -91,7 +91,7 @@ export class SlasService {
   }
 
   async reset(teamId: string, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, teamId);
     await this.ensureTeam(teamId);
 
     await this.prisma.slaPolicy.deleteMany({ where: { teamId } });
@@ -99,10 +99,10 @@ export class SlasService {
     return this.list({ teamId }, user);
   }
 
-  private ensureAdmin(user: AuthUser) {
-    if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Admin access required');
-    }
+  private ensureTeamAdminOrOwner(user: AuthUser, teamId: string) {
+    if (user.role === UserRole.OWNER) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    throw new ForbiddenException('Team admin or owner access required');
   }
 
   private async ensureTeam(teamId: string) {

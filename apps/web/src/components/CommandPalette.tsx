@@ -39,17 +39,17 @@ type PageResult = {
 };
 
 const PAGES: PageResult[] = [
-  { key: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'tickets', label: 'All Tickets', path: '/tickets', icon: Ticket, roles: ['AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'triage', label: 'Triage Board', path: '/triage', icon: ClipboardList, roles: ['LEAD', 'ADMIN'] },
-  { key: 'manager', label: 'Manager Views', path: '/manager', icon: FolderKanban, roles: ['LEAD', 'ADMIN'] },
-  { key: 'team', label: 'Team Management', path: '/team', icon: Users, roles: ['LEAD', 'ADMIN'] },
-  { key: 'sla', label: 'SLA Settings', path: '/sla-settings', icon: Clock, roles: ['ADMIN'] },
-  { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN'] },
-  { key: 'admin', label: 'Admin Settings', path: '/admin', icon: Settings, roles: ['ADMIN'] },
-  { key: 'routing', label: 'Routing Rules', path: '/routing', icon: Settings, roles: ['ADMIN'] },
-  { key: 'categories', label: 'Categories', path: '/categories', icon: FolderKanban, roles: ['ADMIN'] },
-  { key: 'custom-fields', label: 'Custom Fields', path: '/custom-fields', icon: ListChecks, roles: ['ADMIN'] }
+  { key: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'tickets', label: 'All Tickets', path: '/tickets', icon: Ticket, roles: ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'triage', label: 'Triage Board', path: '/triage', icon: ClipboardList, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'manager', label: 'Manager Views', path: '/manager', icon: FolderKanban, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'team', label: 'Team Management', path: '/team', icon: Users, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'sla', label: 'SLA Settings', path: '/sla-settings', icon: Clock, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'admin', label: 'Admin Settings', path: '/admin', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'routing', label: 'Routing Rules', path: '/routing', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'categories', label: 'Categories', path: '/categories', icon: FolderKanban, roles: ['OWNER'] },
+  { key: 'custom-fields', label: 'Custom Fields', path: '/custom-fields', icon: ListChecks, roles: ['TEAM_ADMIN', 'OWNER'] }
 ];
 
 const ACTIONS = [

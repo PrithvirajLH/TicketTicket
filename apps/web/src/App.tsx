@@ -64,30 +64,32 @@ const defaultPersonas: { label: string; email: string; role: Role }[] = [
   { label: 'Employee (Jane)', email: 'jane.doe@company.com', role: 'EMPLOYEE' },
   { label: 'Agent (Alex)', email: 'alex.park@company.com', role: 'AGENT' },
   { label: 'Lead (Maria)', email: 'maria.chen@company.com', role: 'LEAD' },
-  { label: 'Admin (Sam)', email: 'sam.rivera@company.com', role: 'ADMIN' }
+  { label: 'Team Admin (Sam)', email: 'sam.rivera@company.com', role: 'TEAM_ADMIN' },
+  { label: 'Owner', email: 'owner@company.com', role: 'OWNER' }
 ];
 
 const e2ePersonas: { label: string; email: string; role: Role }[] = [
   { label: 'Requester (Test)', email: 'requester@company.com', role: 'EMPLOYEE' },
   { label: 'Agent (Test)', email: 'agent@company.com', role: 'AGENT' },
   { label: 'Lead (Test)', email: 'lead@company.com', role: 'LEAD' },
-  { label: 'Admin (Test)', email: 'admin@company.com', role: 'ADMIN' }
+  { label: 'Team Admin (Test)', email: 'admin@company.com', role: 'TEAM_ADMIN' },
+  { label: 'Owner (Test)', email: 'owner@company.com', role: 'OWNER' }
 ];
 
 const personas = import.meta.env.VITE_E2E_MODE === 'true' ? e2ePersonas : defaultPersonas;
 
 const navItems: (SidebarItem & { roles: Role[] })[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'tickets', label: 'All Tickets', icon: Ticket, roles: ['AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'assigned', label: 'Assigned to Me', icon: UserCheck, roles: ['AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'created', label: 'Created by Me', icon: FileText, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'completed', label: 'Completed', icon: CheckCircle, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'ADMIN'] },
-  { key: 'triage', label: 'Triage Board', icon: ClipboardList, roles: ['LEAD', 'ADMIN'] },
-  { key: 'manager', label: 'Manager Views', icon: FolderKanban, roles: ['LEAD', 'ADMIN'] },
-  { key: 'team', label: 'Team', icon: Users, roles: ['LEAD', 'ADMIN'] },
-  { key: 'sla-settings', label: 'SLA Settings', icon: Clock, roles: ['ADMIN'] },
-  { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['ADMIN'] },
-  { key: 'admin', label: 'Admin', icon: Settings, roles: ['ADMIN'] }
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'tickets', label: 'All Tickets', icon: Ticket, roles: ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'assigned', label: 'Assigned to Me', icon: UserCheck, roles: ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'created', label: 'Created by Me', icon: FileText, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'completed', label: 'Completed', icon: CheckCircle, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'triage', label: 'Triage Board', icon: ClipboardList, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'manager', label: 'Manager Views', icon: FolderKanban, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'team', label: 'Team', icon: Users, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'sla-settings', label: 'SLA Settings', icon: Clock, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'admin', label: 'Admin', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] }
 ];
 
 function deriveNavKey(
@@ -479,7 +481,7 @@ function App() {
             <Route
               path="/triage"
               element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <TriageBoardPage
                     refreshKey={refreshKey}
                     teamsList={teamsList}
@@ -493,7 +495,7 @@ function App() {
             <Route
               path="/manager"
               element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <ManagerViewsPage refreshKey={refreshKey} teamsList={teamsList} />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -503,7 +505,7 @@ function App() {
             <Route
               path="/team"
               element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <TeamPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -513,7 +515,7 @@ function App() {
             <Route
               path="/sla-settings"
               element={
-                currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <SlaSettingsPage teamsList={teamsList} />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -523,7 +525,7 @@ function App() {
             <Route
               path="/reports"
               element={
-                currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <ReportsPage />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -533,8 +535,8 @@ function App() {
             <Route
               path="/admin"
               element={
-                currentPersona.role === 'ADMIN' ? (
-                  <AdminPage />
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
+                  <AdminPage role={currentPersona.role} />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -543,7 +545,7 @@ function App() {
             <Route
               path="/routing"
               element={
-                currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <RoutingRulesPage teamsList={teamsList} />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -553,7 +555,7 @@ function App() {
             <Route
               path="/categories"
               element={
-                currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'OWNER' ? (
                   <CategoriesPage />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -563,7 +565,7 @@ function App() {
             <Route
               path="/custom-fields"
               element={
-                currentPersona.role === 'ADMIN' ? (
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <CustomFieldsAdminPage />
                 ) : (
                   <Navigate to="/dashboard" replace />

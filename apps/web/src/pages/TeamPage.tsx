@@ -34,7 +34,8 @@ export function TeamPage({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const isAdmin = role === 'ADMIN';
+  const isAdmin = role === 'OWNER' || role === 'TEAM_ADMIN';
+  const isOwner = role === 'OWNER';
 
   useEffect(() => {
     if (!isAdmin) {
@@ -182,7 +183,9 @@ export function TeamPage({
         <div className="glass-card p-6">
           <p className="text-sm font-semibold text-slate-900">No departments yet</p>
           <p className="text-sm text-slate-500 mt-1">
-            Create a department to start adding members.
+            {isOwner
+              ? 'Create a department to start adding members.'
+              : 'No departments available. Contact an owner to create departments.'}
           </p>
         </div>
       )}

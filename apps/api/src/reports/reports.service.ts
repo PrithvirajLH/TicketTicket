@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma, TicketPriority } from '@prisma/client';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Prisma, TicketPriority, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -10,6 +10,17 @@ import {
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** For TEAM_ADMIN, force teamId to primary team and ignore other teamId. */
+  private scopeReportQuery(query: ReportQueryDto, user: AuthUser): ReportQueryDto {
+    if (user.role === UserRole.TEAM_ADMIN) {
+      if (!user.primaryTeamId) {
+        throw new ForbiddenException('Team administrator must have a primary team set');
+      }
+      return { ...query, teamId: user.primaryTeamId };
+    }
+    return query;
+  }
 
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
   private toEndExclusive(to?: string): Date {
@@ -47,32 +58,35 @@ export class ReportsService {
     return { fromDate, toEndExclusive, toDateInclusive };
   }
 
-  /** Build raw SQL conditions for date + optional filters (parameterized). End is exclusive (lt). */
+  /** Build raw SQL conditions for date + optional filters (parameterized). End is exclusive (lt). Use tableAlias (e.g. 't') when query joins multiple tables that have these columns. */
   private rawConditions(
     fromDate: Date,
     toEndExclusive: Date,
     teamId?: string,
     priority?: TicketPriority,
     categoryId?: string,
+    tableAlias?: string,
   ): Prisma.Sql[] {
+    const pre = tableAlias ? `${tableAlias}."` : '"';
     const conditions: Prisma.Sql[] = [
-      Prisma.sql`"createdAt" >= ${fromDate}`,
-      Prisma.sql`"createdAt" < ${toEndExclusive}`,
+      Prisma.sql`${Prisma.raw(pre + 'createdAt"')} >= ${fromDate}`,
+      Prisma.sql`${Prisma.raw(pre + 'createdAt"')} < ${toEndExclusive}`,
     ];
-    if (teamId) conditions.push(Prisma.sql`"assignedTeamId" = ${teamId}`);
-    if (priority) conditions.push(Prisma.sql`"priority" = ${priority}`);
-    if (categoryId) conditions.push(Prisma.sql`"categoryId" = ${categoryId}`);
+    if (teamId) conditions.push(Prisma.sql`${Prisma.raw(pre + 'assignedTeamId"')} = ${teamId}`);
+    if (priority) conditions.push(Prisma.sql`${Prisma.raw(pre + 'priority"')} = ${priority}`);
+    if (categoryId) conditions.push(Prisma.sql`${Prisma.raw(pre + 'categoryId"')} = ${categoryId}`);
     return conditions;
   }
 
-  async getTicketVolume(query: ReportQueryDto, _user: AuthUser) {
-    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(query.from, query.to);
+  async getTicketVolume(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
-      query.teamId,
-      query.priority,
-      query.categoryId,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
     );
     const rows = await this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
       SELECT d::date as date, coalesce(c.cnt, 0)::bigint as count
@@ -93,14 +107,15 @@ export class ReportsService {
     };
   }
 
-  async getSlaCompliance(query: ReportQueryDto, _user: AuthUser) {
-    const { fromDate, toEndExclusive } = this.dateRange(query.from, query.to);
+  async getSlaCompliance(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
-      query.teamId,
-      query.priority,
-      query.categoryId,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
     );
     conditions.push(Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`);
     const row = await this.prisma.$queryRaw<
@@ -144,14 +159,15 @@ export class ReportsService {
     };
   }
 
-  async getResolutionTime(query: ResolutionTimeQueryDto, _user: AuthUser) {
-    const { fromDate, toEndExclusive } = this.dateRange(query.from, query.to);
+  async getResolutionTime(query: ResolutionTimeQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
-      query.teamId,
-      query.priority,
-      query.categoryId,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
     );
     conditions.push(Prisma.sql`"resolvedAt" IS NOT NULL`);
     const groupBy = query.groupBy === 'priority' ? 'priority' : 'team';
@@ -200,9 +216,10 @@ export class ReportsService {
     };
   }
 
-  async getTicketsByStatus(query: ReportQueryDto, _user: AuthUser) {
-    const { fromDate, toEndExclusive } = this.dateRange(query.from, query.to);
-    const where = this.reportWhere(query, fromDate, toEndExclusive);
+  async getTicketsByStatus(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const where = this.reportWhere(scoped, fromDate, toEndExclusive);
     const groups = await this.prisma.ticket.groupBy({
       by: ['status'],
       where,
@@ -217,9 +234,10 @@ export class ReportsService {
     };
   }
 
-  async getTicketsByPriority(query: ReportQueryDto, _user: AuthUser) {
-    const { fromDate, toEndExclusive } = this.dateRange(query.from, query.to);
-    const where = this.reportWhere(query, fromDate, toEndExclusive);
+  async getTicketsByPriority(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const where = this.reportWhere(scoped, fromDate, toEndExclusive);
     const groups = await this.prisma.ticket.groupBy({
       by: ['priority'],
       where,
@@ -234,16 +252,18 @@ export class ReportsService {
     };
   }
 
-  async getAgentPerformance(query: ReportQueryDto, _user: AuthUser) {
-    const { fromDate, toEndExclusive } = this.dateRange(query.from, query.to);
+  async getAgentPerformance(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
-      query.teamId,
-      query.priority,
-      query.categoryId,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
+      't',
     );
-    conditions.push(Prisma.sql`"assigneeId" IS NOT NULL`);
+    conditions.push(Prisma.sql`t."assigneeId" IS NOT NULL`);
     const rows = await this.prisma.$queryRaw<
       {
         user_id: string;

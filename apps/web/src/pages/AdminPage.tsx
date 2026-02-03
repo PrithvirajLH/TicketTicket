@@ -1,34 +1,41 @@
 import { Link } from 'react-router-dom';
 import { Clock, GitMerge, Layers, ListChecks } from 'lucide-react';
+import type { Role } from '../types';
 
-const adminCards = [
+const adminCards: { title: string; description: string; href: string; icon: typeof Clock; roles: Role[] }[] = [
   {
     title: 'SLA Settings',
     description: 'Configure first response and resolution targets per team.',
     href: '/sla-settings',
-    icon: Clock
+    icon: Clock,
+    roles: ['TEAM_ADMIN', 'OWNER']
   },
   {
     title: 'Routing Rules',
     description: 'Control keyword-based auto-routing for new tickets.',
     href: '/routing',
-    icon: GitMerge
+    icon: GitMerge,
+    roles: ['TEAM_ADMIN', 'OWNER']
   },
   {
     title: 'Categories',
     description: 'Manage ticket categories and subcategories.',
     href: '/categories',
-    icon: Layers
+    icon: Layers,
+    roles: ['OWNER']
   },
   {
     title: 'Custom Fields',
     description: 'Define custom fields per team for tickets.',
     href: '/custom-fields',
-    icon: ListChecks
+    icon: ListChecks,
+    roles: ['TEAM_ADMIN', 'OWNER']
   }
 ];
 
-export function AdminPage() {
+export function AdminPage({ role }: { role: Role }) {
+  const visibleCards = adminCards.filter((card) => card.roles.includes(role));
+
   return (
     <section className="mt-8 space-y-6 animate-fade-in">
       <div className="glass-card p-6">
@@ -37,7 +44,7 @@ export function AdminPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {adminCards.map((card) => {
+        {visibleCards.map((card) => {
           const Icon = card.icon;
           return (
             <Link

@@ -33,7 +33,7 @@ export class CategoriesService {
   }
 
   async create(payload: CreateCategoryDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureOwner(user);
 
     if (payload.parentId) {
       await this.ensureCategory(payload.parentId);
@@ -54,7 +54,7 @@ export class CategoriesService {
   }
 
   async update(id: string, payload: UpdateCategoryDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureOwner(user);
 
     const category = await this.prisma.category.findUnique({ where: { id } });
 
@@ -80,7 +80,7 @@ export class CategoriesService {
   }
 
   async remove(id: string, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureOwner(user);
 
     const category = await this.prisma.category.findUnique({ where: { id } });
 
@@ -100,9 +100,9 @@ export class CategoriesService {
     return { id };
   }
 
-  private ensureAdmin(user: AuthUser) {
-    if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Admin access required');
+  private ensureOwner(user: AuthUser) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Category management is restricted to owners');
     }
   }
 

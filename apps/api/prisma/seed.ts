@@ -79,8 +79,15 @@ async function seedMinimal() {
       {
         email: 'sam.rivera@company.com',
         displayName: 'Sam Rivera',
-        role: UserRole.ADMIN,
+        role: UserRole.TEAM_ADMIN,
         department: 'AI',
+        location: 'Remote'
+      },
+      {
+        email: 'owner@company.com',
+        displayName: 'Owner',
+        role: UserRole.OWNER,
+        department: null,
         location: 'Remote'
       }
     ]
@@ -89,6 +96,13 @@ async function seedMinimal() {
   const users = await prisma.user.findMany({
     where: { email: { in: ['alex.park@company.com', 'maria.chen@company.com', 'sam.rivera@company.com'] } }
   });
+  const samUser = await prisma.user.findUnique({ where: { email: 'sam.rivera@company.com' } });
+  if (samUser) {
+    await prisma.user.update({
+      where: { id: samUser.id },
+      data: { primaryTeamId: aiTeam.id }
+    });
+  }
 
   const roleByEmail = new Map([
     ['alex.park@company.com', TeamRole.AGENT],
@@ -181,7 +195,14 @@ async function seedDev() {
       displayName: 'Sam Rivera',
       department: 'AI',
       location: 'Austin, TX',
-      role: UserRole.ADMIN
+      role: UserRole.TEAM_ADMIN
+    },
+    {
+      email: 'owner@company.com',
+      displayName: 'Owner',
+      department: null,
+      location: 'Remote',
+      role: UserRole.OWNER
     }
   ];
 
@@ -199,8 +220,9 @@ async function seedDev() {
   const alex = userRecords.find((user) => user.email === 'alex.park@company.com');
   const maria = userRecords.find((user) => user.email === 'maria.chen@company.com');
   const sam = userRecords.find((user) => user.email === 'sam.rivera@company.com');
+  const ownerUser = userRecords.find((user) => user.email === 'owner@company.com');
 
-  if (!jane || !alex || !maria || !sam) {
+  if (!jane || !alex || !maria || !sam || !ownerUser) {
     throw new Error('Seed users missing');
   }
 
@@ -213,6 +235,11 @@ async function seedDev() {
   if (!itTeam || !hrTeam || !aiTeam || !medicaidTeam || !vipTeam) {
     throw new Error('Seed teams missing');
   }
+
+  await prisma.user.update({
+    where: { id: sam.id },
+    data: { primaryTeamId: aiTeam.id }
+  });
 
   await prisma.teamMember.upsert({
     where: { teamId_userId: { teamId: itTeam.id, userId: alex.id } },
@@ -231,6 +258,7 @@ async function seedDev() {
     update: { role: TeamRole.ADMIN },
     create: { teamId: aiTeam.id, userId: sam.id, role: TeamRole.ADMIN }
   });
+  // OWNER has no team membership; TEAM_ADMIN (Sam) has primaryTeamId set above
 
   await prisma.routingRule.createMany({
     data: [
@@ -574,7 +602,8 @@ async function seedTest() {
     otherRequester: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
     agent: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     lead: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    admin: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+    admin: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    owner: 'oooooooo-oooo-4ooo-8ooo-oooooooooooo'
   };
 
   await prisma.ticketAccess.deleteMany();
@@ -642,9 +671,18 @@ async function seedTest() {
       {
         id: ids.admin,
         email: 'admin@company.com',
-        displayName: 'Admin One',
-        role: UserRole.ADMIN,
+        displayName: 'Team Admin One',
+        role: UserRole.TEAM_ADMIN,
         department: 'Security',
+        location: 'Remote',
+        primaryTeamId: ids.teamIt
+      },
+      {
+        id: ids.owner,
+        email: 'owner@company.com',
+        displayName: 'Owner One',
+        role: UserRole.OWNER,
+        department: null,
         location: 'Remote'
       }
     ]
@@ -653,7 +691,8 @@ async function seedTest() {
   await prisma.teamMember.createMany({
     data: [
       { id: 'e1111111-1111-1111-1111-111111111111', teamId: ids.teamIt, userId: ids.agent, role: TeamRole.AGENT },
-      { id: 'e2222222-2222-2222-2222-222222222222', teamId: ids.teamIt, userId: ids.lead, role: TeamRole.LEAD }
+      { id: 'e2222222-2222-2222-2222-222222222222', teamId: ids.teamIt, userId: ids.lead, role: TeamRole.LEAD },
+      { id: 'e3333333-3333-3333-3333-333333333333', teamId: ids.teamIt, userId: ids.admin, role: TeamRole.ADMIN }
     ]
   });
 

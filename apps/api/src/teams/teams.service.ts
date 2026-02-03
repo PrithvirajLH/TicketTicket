@@ -16,21 +16,31 @@ import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
 export class TeamsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(query: ListTeamsDto) {
+  async list(query: ListTeamsDto, user?: AuthUser) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
 
-    const where = {
+    const baseWhere: { isActive: boolean; id?: string } = {
       isActive: true,
-      OR: query.q
-        ? [
-            { name: { contains: query.q, mode: 'insensitive' as const } },
-            {
-              description: { contains: query.q, mode: 'insensitive' as const },
-            },
-          ]
-        : undefined,
+    };
+    if (user?.role === UserRole.TEAM_ADMIN) {
+      if (!user.primaryTeamId) {
+        throw new ForbiddenException('Team administrator must have a primary team set');
+      }
+      baseWhere.id = user.primaryTeamId;
+    }
+    // OWNER and non-admins: no team filter (full list or caller restricts elsewhere)
+    const where = {
+      ...baseWhere,
+      ...(query.q
+        ? {
+            OR: [
+              { name: { contains: query.q, mode: 'insensitive' as const } },
+              { description: { contains: query.q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
     };
 
     const [total, data] = await Promise.all([
@@ -54,7 +64,8 @@ export class TeamsService {
     };
   }
 
-  async create(payload: CreateTeamDto) {
+  async create(payload: CreateTeamDto, user: AuthUser) {
+    this.ensureOwner(user);
     const slug = payload.slug ?? this.slugify(payload.name);
 
     return this.prisma.team.create({
@@ -68,7 +79,7 @@ export class TeamsService {
   }
 
   async update(teamId: string, payload: UpdateTeamDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, teamId);
 
     await this.ensureTeam(teamId);
 
@@ -99,7 +110,7 @@ export class TeamsService {
   }
 
   async addMember(teamId: string, payload: AddTeamMemberDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, teamId);
 
     await this.ensureTeam(teamId);
     await this.ensureUser(payload.userId);
@@ -129,7 +140,7 @@ export class TeamsService {
     payload: UpdateTeamMemberDto,
     user: AuthUser,
   ) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, teamId);
 
     const member = await this.prisma.teamMember.findUnique({
       where: { id: memberId },
@@ -147,7 +158,7 @@ export class TeamsService {
   }
 
   async removeMember(teamId: string, memberId: string, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, teamId);
 
     const member = await this.prisma.teamMember.findUnique({
       where: { id: memberId },
@@ -162,16 +173,21 @@ export class TeamsService {
     return { id: memberId };
   }
 
-  private ensureAdmin(user: AuthUser) {
-    if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Admin access required');
+  private ensureOwner(user: AuthUser) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Owner access required');
     }
   }
 
+  private ensureTeamAdminOrOwner(user: AuthUser, teamId: string) {
+    if (user.role === UserRole.OWNER) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    throw new ForbiddenException('Team admin or owner access required');
+  }
+
   private ensureMemberAccess(user: AuthUser, teamId: string) {
-    if (user.role === UserRole.ADMIN) {
-      return;
-    }
+    if (user.role === UserRole.OWNER) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
 
     const isTeamMember =
       user.teamId === teamId &&

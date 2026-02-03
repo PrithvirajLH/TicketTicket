@@ -39,18 +39,42 @@ function parseOptions(raw: unknown): { value: string; label: string }[] {
 export class CustomFieldsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private ensureAdmin(user: AuthUser) {
-    if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Admin access required');
+  private ensureOwner(user: AuthUser) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Owner access required');
     }
   }
 
+  private ensureTeamAdminOrOwner(user: AuthUser, teamId: string | null) {
+    if (teamId == null) {
+      this.ensureOwner(user);
+      return;
+    }
+    if (user.role === UserRole.OWNER) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    throw new ForbiddenException('Team admin or owner access required');
+  }
+
   async list(query: ListCustomFieldsDto, user: AuthUser) {
+    if (user.role === UserRole.TEAM_ADMIN && !user.primaryTeamId) {
+      throw new ForbiddenException('Team administrator must have a primary team set');
+    }
+
     type Where = { teamId?: string | null; categoryId?: string | null; OR?: { teamId: string | null }[] };
     const where: Where = {};
 
-    if (user.role === UserRole.ADMIN) {
-      if (query.teamId != null) where.teamId = query.teamId;
+    if (user.role === UserRole.OWNER || user.role === UserRole.TEAM_ADMIN) {
+      const allowedTeamId = user.role === UserRole.TEAM_ADMIN ? user.primaryTeamId! : null;
+      if (user.role === UserRole.OWNER) {
+        if (query.teamId != null) where.teamId = query.teamId;
+      } else {
+        if (query.teamId != null && query.teamId !== allowedTeamId) {
+          throw new ForbiddenException(
+            'You can only list custom fields for your primary team',
+          );
+        }
+        where.OR = [{ teamId: null }, { teamId: allowedTeamId }];
+      }
       if (query.categoryId != null) where.categoryId = query.categoryId;
     } else {
       const allowedTeamId = user.teamId ?? null;
@@ -71,7 +95,7 @@ export class CustomFieldsService {
   }
 
   async create(dto: CreateCustomFieldDto, user: AuthUser) {
-    this.ensureAdmin(user);
+    this.ensureTeamAdminOrOwner(user, dto.teamId ?? null);
 
     return this.prisma.customField.create({
       data: {
@@ -87,12 +111,11 @@ export class CustomFieldsService {
   }
 
   async update(id: string, dto: UpdateCustomFieldDto, user: AuthUser) {
-    this.ensureAdmin(user);
-
     const existing = await this.prisma.customField.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Custom field not found');
     }
+    this.ensureTeamAdminOrOwner(user, existing.teamId);
 
     const data: Prisma.CustomFieldUpdateInput = {
       ...(dto.name != null && { name: dto.name }),
@@ -116,12 +139,11 @@ export class CustomFieldsService {
   }
 
   async delete(id: string, user: AuthUser) {
-    this.ensureAdmin(user);
-
     const existing = await this.prisma.customField.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Custom field not found');
     }
+    this.ensureTeamAdminOrOwner(user, existing.teamId);
 
     await this.prisma.customField.delete({ where: { id } });
     return { deleted: true };
@@ -288,7 +310,10 @@ export class CustomFieldsService {
     }
 
     const canWrite =
-      user.role === UserRole.ADMIN ||
+      user.role === UserRole.OWNER ||
+      (user.role === UserRole.TEAM_ADMIN &&
+        user.primaryTeamId &&
+        ticket.assignedTeamId === user.primaryTeamId) ||
       user.role === UserRole.LEAD ||
       (user.role === UserRole.AGENT &&
         (ticket.assignedTeamId === user.teamId ||

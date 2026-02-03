@@ -18,8 +18,8 @@ export class RoutingRulesController {
   constructor(private readonly routingRulesService: RoutingRulesService) {}
 
   @Get()
-  async list() {
-    return this.routingRulesService.list();
+  async list(@CurrentUser() user: AuthUser) {
+    return this.routingRulesService.list(user);
   }
 
   @Post()

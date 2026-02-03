@@ -54,7 +54,9 @@ enum UserRole {
   EMPLOYEE
   AGENT
   LEAD
-  ADMIN
+  ADMIN   // deprecated: use TEAM_ADMIN or OWNER
+  TEAM_ADMIN
+  OWNER
 }
 
 enum AccessLevel {
@@ -98,10 +100,12 @@ model User {
   department         String?
   location           String?
   role               UserRole      @default(EMPLOYEE)
+  primaryTeamId      String?       // for TEAM_ADMIN: the team they administer
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
   teamMemberships    TeamMember[]
+  primaryTeam        Team?         @relation("UserPrimaryTeam", fields: [primaryTeamId], references: [id])
   requestedTickets   Ticket[]      @relation("TicketRequester")
   assignedTickets    Ticket[]      @relation("TicketAssignee")
   messages           TicketMessage[]
@@ -128,6 +132,7 @@ model Team {
   updatedAt   DateTime     @updatedAt
 
   members     TeamMember[]
+  primaryTeamUsers User[]  @relation("UserPrimaryTeam")
   tickets     Ticket[]
   ticketAccess TicketAccess[]
   routingRules RoutingRule[]

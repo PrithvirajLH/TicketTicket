@@ -1061,7 +1061,9 @@ export class TicketsService {
   ) {
     const targetUserId = payload.userId ?? user.id;
     const canManageFollowers =
-      user.role === UserRole.ADMIN || user.role === UserRole.LEAD;
+      user.role === UserRole.OWNER ||
+      user.role === UserRole.TEAM_ADMIN ||
+      user.role === UserRole.LEAD;
 
     if (targetUserId !== user.id && !canManageFollowers) {
       throw new ForbiddenException('Not allowed to follow for others');
@@ -1087,7 +1089,9 @@ export class TicketsService {
   async unfollowTicket(ticketId: string, userId: string, user: AuthUser) {
     const targetUserId = userId === 'me' ? user.id : userId;
     const canManageFollowers =
-      user.role === UserRole.ADMIN || user.role === UserRole.LEAD;
+      user.role === UserRole.OWNER ||
+      user.role === UserRole.TEAM_ADMIN ||
+      user.role === UserRole.LEAD;
 
     if (targetUserId !== user.id && !canManageFollowers) {
       throw new ForbiddenException('Not allowed to remove other followers');
@@ -1214,8 +1218,17 @@ export class TicketsService {
   }
 
   private buildAccessFilter(user: AuthUser): Prisma.TicketWhereInput {
-    if (user.role === UserRole.ADMIN) {
+    if (user.role === UserRole.OWNER) {
       return {};
+    }
+
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      return {
+        OR: [
+          { assignedTeamId: user.primaryTeamId },
+          { accessGrants: { some: { teamId: user.primaryTeamId } } },
+        ],
+      };
     }
 
     if (user.role === UserRole.EMPLOYEE) {
@@ -1253,8 +1266,13 @@ export class TicketsService {
       accessGrants?: { teamId: string }[];
     },
   ) {
-    if (user.role === UserRole.ADMIN) {
+    if (user.role === UserRole.OWNER) {
       return true;
+    }
+
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      const grant = ticket.accessGrants?.some((g) => g.teamId === user.primaryTeamId) ?? false;
+      return ticket.assignedTeamId === user.primaryTeamId || grant;
     }
 
     if (user.role === UserRole.EMPLOYEE) {
@@ -1288,8 +1306,12 @@ export class TicketsService {
       assigneeId: string | null;
     },
   ) {
-    if (user.role === UserRole.ADMIN) {
+    if (user.role === UserRole.OWNER) {
       return true;
+    }
+
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      return ticket.assignedTeamId === user.primaryTeamId;
     }
 
     if (user.role === UserRole.EMPLOYEE) {
@@ -1315,8 +1337,12 @@ export class TicketsService {
     ticket: { assignedTeamId: string | null; assigneeId: string | null },
     assigneeId?: string,
   ) {
-    if (user.role === UserRole.ADMIN) {
+    if (user.role === UserRole.OWNER) {
       return true;
+    }
+
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      return ticket.assignedTeamId === user.primaryTeamId;
     }
 
     if (!user.teamId || ticket.assignedTeamId !== user.teamId) {

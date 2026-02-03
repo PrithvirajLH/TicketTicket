@@ -22,13 +22,13 @@ export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
   @Get()
-  async list(@Query() query: ListTeamsDto) {
-    return this.teamsService.list(query);
+  async list(@Query() query: ListTeamsDto, @CurrentUser() user: AuthUser) {
+    return this.teamsService.list(query, user);
   }
 
   @Post()
-  async create(@Body() payload: CreateTeamDto) {
-    return this.teamsService.create(payload);
+  async create(@Body() payload: CreateTeamDto, @CurrentUser() user: AuthUser) {
+    return this.teamsService.create(payload, user);
   }
 
   @Patch(':id')
