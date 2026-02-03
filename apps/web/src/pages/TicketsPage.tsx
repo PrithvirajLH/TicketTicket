@@ -231,7 +231,7 @@ export function TicketsPage({
   }, [focusedTicketIndex]);
 
   return (
-    <section className="mt-8 space-y-6 animate-fade-in">
+    <section className="mt-8 min-w-0 space-y-6 animate-fade-in">
       {toast && (
         <div className="fixed right-8 top-6 z-50">
           <div
@@ -246,7 +246,7 @@ export function TicketsPage({
         </div>
       )}
 
-      <div className="glass-card p-6">
+      <div className="glass-card min-w-0 p-6">
         {selection.isSomeSelected && role !== 'EMPLOYEE' && (
           <BulkActionsToolbar
             selectedCount={selection.selectedCount}

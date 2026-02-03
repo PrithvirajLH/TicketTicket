@@ -21,6 +21,7 @@ import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
+import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { TicketsService } from './tickets.service';
@@ -37,6 +38,11 @@ export class TicketsController {
   @Get('counts')
   async getCounts(@CurrentUser() user: AuthUser) {
     return this.ticketsService.getCounts(user);
+  }
+
+  @Get('activity')
+  async getActivity(@Query() query: TicketActivityDto, @CurrentUser() user: AuthUser) {
+    return this.ticketsService.getActivity(query, user);
   }
 
   @Get(':id')

@@ -445,28 +445,30 @@ function App() {
         />
 
         <main
-          className={`flex-1 px-10 py-8 transition-all duration-300 h-screen overflow-y-auto ${
-            isSidebarCollapsed ? 'ml-20' : 'ml-64'
-          }`}
+          className={`flex-1 px-10 transition-all duration-300 h-screen overflow-y-auto ${
+            location.pathname === '/dashboard' ? 'py-0' : 'py-8'
+          } ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}
         >
-          <TopBar
-            title={viewTitle}
-            subtitle={viewSubtitle}
-            currentEmail={currentEmail}
-            personas={personas}
-            onEmailChange={setCurrentEmail}
-            onOpenSearch={commandPalette.open}
-            notificationProps={{
-              notifications: notifications.notifications,
-              unreadCount: notifications.unreadCount,
-              loading: notifications.loading,
-              hasMore: notifications.hasMore,
-              onLoadMore: notifications.loadMore,
-              onMarkAsRead: notifications.markAsRead,
-              onMarkAllAsRead: notifications.markAllAsRead,
-              onRefresh: notifications.refresh
-            }}
-          />
+          {location.pathname !== '/dashboard' && (
+            <TopBar
+              title={viewTitle}
+              subtitle={viewSubtitle}
+              currentEmail={currentEmail}
+              personas={personas}
+              onEmailChange={setCurrentEmail}
+              onOpenSearch={commandPalette.open}
+              notificationProps={{
+                notifications: notifications.notifications,
+                unreadCount: notifications.unreadCount,
+                loading: notifications.loading,
+                hasMore: notifications.hasMore,
+                onLoadMore: notifications.loadMore,
+                onMarkAsRead: notifications.markAsRead,
+                onMarkAllAsRead: notifications.markAllAsRead,
+                onRefresh: notifications.refresh
+              }}
+            />
+          )}
 
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -475,6 +477,25 @@ function App() {
               element={
                 <DashboardPage
                   refreshKey={refreshKey}
+                  role={currentPersona.role}
+                  headerProps={{
+                    title: viewMeta.dashboard.title,
+                    subtitle: viewMeta.dashboard.subtitle,
+                    currentEmail,
+                    personas,
+                    onEmailChange: setCurrentEmail,
+                    onOpenSearch: commandPalette.open,
+                    notificationProps: {
+                      notifications: notifications.notifications,
+                      unreadCount: notifications.unreadCount,
+                      loading: notifications.loading,
+                      hasMore: notifications.hasMore,
+                      onLoadMore: notifications.loadMore,
+                      onMarkAsRead: notifications.markAsRead,
+                      onMarkAllAsRead: notifications.markAllAsRead,
+                      onRefresh: notifications.refresh
+                    }
+                  }}
                 />
               }
             />

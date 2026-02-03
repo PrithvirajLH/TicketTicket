@@ -32,6 +32,7 @@ import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
+import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 
@@ -60,6 +61,8 @@ export class TicketsService {
     TicketStatus.WAITING_ON_VENDOR,
   ];
 
+  private defaultActivityDays = 7;
+
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
   private toEndExclusive(dateStr: string): Date {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -76,6 +79,47 @@ export class TicketsService {
     if (Array.isArray(value)) return value.filter((v): v is T => v != null && v !== '');
     if (typeof value === 'string') return value.split(',').map((s) => s.trim() as T).filter(Boolean);
     return [];
+  }
+
+  private activityDateRange(from?: string, to?: string) {
+    const now = new Date();
+    const toBase = to ? new Date(to) : now;
+    const toDateInclusive = new Date(Date.UTC(toBase.getUTCFullYear(), toBase.getUTCMonth(), toBase.getUTCDate()));
+    const toEndExclusive = this.toEndExclusive(to ?? toDateInclusive.toISOString().slice(0, 10));
+    const fromBase = from ? new Date(from) : new Date(toDateInclusive);
+    if (!from) {
+      fromBase.setUTCDate(fromBase.getUTCDate() - (this.defaultActivityDays - 1));
+    }
+    const fromDate = new Date(Date.UTC(fromBase.getUTCFullYear(), fromBase.getUTCMonth(), fromBase.getUTCDate()));
+    return { fromDate, toEndExclusive, toDateInclusive };
+  }
+
+  private accessConditionSql(user: AuthUser, alias = 't'): Prisma.Sql {
+    const col = (name: string) => Prisma.raw(`${alias}."${name}"`);
+    const accessGrant = (teamId: string) =>
+      Prisma.sql`EXISTS (SELECT 1 FROM "TicketAccess" ta WHERE ta."ticketId" = ${col('id')} AND ta."teamId" = ${teamId})`;
+
+    if (user.role === UserRole.OWNER) {
+      return Prisma.sql`TRUE`;
+    }
+
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      return Prisma.sql`(${col('assignedTeamId')} = ${user.primaryTeamId} OR ${accessGrant(user.primaryTeamId)})`;
+    }
+
+    if (user.role === UserRole.EMPLOYEE) {
+      return Prisma.sql`${col('requesterId')} = ${user.id}`;
+    }
+
+    if (!user.teamId) {
+      return Prisma.sql`${col('requesterId')} = ${user.id}`;
+    }
+
+    if (user.role === UserRole.LEAD) {
+      return Prisma.sql`(${col('assignedTeamId')} = ${user.teamId} OR ${accessGrant(user.teamId)})`;
+    }
+
+    return Prisma.sql`((${col('assignedTeamId')} = ${user.teamId} AND (${col('assigneeId')} = ${user.id} OR ${col('assigneeId')} IS NULL)) OR ${accessGrant(user.teamId)})`;
   }
 
   async list(query: ListTicketsDto, user: AuthUser) {
@@ -279,6 +323,50 @@ export class TicketsService {
     ]);
 
     return { assignedToMe, triage, open: openTotal };
+  }
+
+  async getActivity(query: TicketActivityDto, user: AuthUser) {
+    const { fromDate, toEndExclusive, toDateInclusive } = this.activityDateRange(query.from, query.to);
+    const accessCondition = this.accessConditionSql(user, 't');
+    const assigneeCondition =
+      query.scope === 'assigned'
+        ? Prisma.sql`AND t."assigneeId" = ${user.id}`
+        : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      { date: Date; open: bigint; resolved: bigint }[]
+    >`
+      SELECT d::date as date,
+        coalesce(o.open_count, 0)::bigint as open,
+        coalesce(r.resolved_count, 0)::bigint as resolved
+      FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
+      LEFT JOIN (
+        SELECT date_trunc('day', t."createdAt")::date as day, count(*)::bigint as open_count
+        FROM "Ticket" t
+        WHERE ${accessCondition} ${assigneeCondition}
+          AND t."createdAt" >= ${fromDate}
+          AND t."createdAt" < ${toEndExclusive}
+        GROUP BY 1
+      ) o ON o.day = d::date
+      LEFT JOIN (
+        SELECT date_trunc('day', t."completedAt")::date as day, count(*)::bigint as resolved_count
+        FROM "Ticket" t
+        WHERE ${accessCondition} ${assigneeCondition}
+          AND t."completedAt" IS NOT NULL
+          AND t."completedAt" >= ${fromDate}
+          AND t."completedAt" < ${toEndExclusive}
+        GROUP BY 1
+      ) r ON r.day = d::date
+      ORDER BY 1
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+        open: Number(row.open),
+        resolved: Number(row.resolved),
+      })),
+    };
   }
 
   async getById(id: string, user: AuthUser) {

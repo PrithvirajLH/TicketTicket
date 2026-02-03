@@ -150,6 +150,12 @@ export type TicketListResponse = {
   meta: { page: number; pageSize: number; total: number; totalPages: number };
 };
 
+export type TicketActivityPoint = {
+  date: string;
+  open: number;
+  resolved: number;
+};
+
 export type CreateTicketPayload = {
   subject: string;
   description: string;
@@ -242,6 +248,15 @@ export function fetchTickets(params?: Record<string, string | number | undefined
 
 export function fetchTicketCounts() {
   return apiFetch<{ assignedToMe: number; triage: number; open: number }>('/tickets/counts');
+}
+
+export function fetchTicketActivity(params?: { from?: string; to?: string; scope?: 'assigned' }) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set('from', params.from);
+  if (params?.to) query.set('to', params.to);
+  if (params?.scope) query.set('scope', params.scope);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{ data: TicketActivityPoint[] }>(`/tickets/activity${suffix}`);
 }
 
 export type SavedViewRecord = {

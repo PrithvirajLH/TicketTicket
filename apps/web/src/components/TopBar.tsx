@@ -1,5 +1,6 @@
-import { Search } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import type { NotificationRecord } from '../api/client';
+import { initialsFor } from '../utils/format';
 import { NotificationCenter } from './NotificationCenter';
 
 type NotificationProps = {
@@ -30,37 +31,46 @@ export function TopBar({
   onOpenSearch?: () => void;
   notificationProps?: NotificationProps;
 }) {
+  const avatarSeed = currentEmail.split('@')[0]?.replace(/[._-]+/g, ' ') || currentEmail;
+  const avatarInitials = initialsFor(avatarSeed);
+
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-3xl font-semibold text-slate-900">{title}</h1>
-        <p className="text-sm text-slate-600 mt-1">{subtitle}</p>
+        <h1 className="text-2xl font-semibold leading-tight text-foreground">{title}</h1>
+        <p className="mt-0.5 text-sm leading-snug text-muted-foreground">{subtitle}</p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Search Button */}
         {onOpenSearch && (
           <button
             type="button"
             onClick={onOpenSearch}
-            className="hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-500 hover:text-slate-700 hover:border-slate-400 transition"
+            className="hidden sm:inline-flex min-w-[220px] items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-card transition hover:text-foreground"
           >
             <Search className="h-4 w-4" />
             <span>Search...</span>
-            <kbd className="ml-2 px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-xs text-slate-400">⌘K</kbd>
           </button>
         )}
 
-        <select
-          className="px-3 py-2 rounded-full border border-slate-300 bg-white text-sm text-slate-700"
-          value={currentEmail}
-          onChange={(event) => onEmailChange(event.target.value)}
-        >
-          {personas.map((persona) => (
-            <option key={persona.email} value={persona.email}>
-              {persona.label}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            className="appearance-none rounded-full border border-border bg-card px-4 py-2 pr-10 text-sm font-semibold text-foreground shadow-card"
+            value={currentEmail}
+            onChange={(event) => onEmailChange(event.target.value)}
+          >
+            {personas.map((persona) => (
+              <option key={persona.email} value={persona.email}>
+                {persona.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
+
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
+          {avatarInitials}
+        </div>
 
         {/* Notification Center - end right */}
         {notificationProps && (
