@@ -3,12 +3,11 @@ const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as string | undefined
 
 /** Thrown by apiFetch when response is not ok; includes status for UI (e.g. 403). */
 export class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-  ) {
+  readonly status: number;
+  constructor(message: string, status: number) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
   }
 }
 

@@ -92,7 +92,7 @@ export function ReportsPage() {
       setAgents(agentRes.data);
     } catch (e) {
       const message = e instanceof ApiError
-        ? `Reports failed (${e.status}): ${e.message || 'Check API is running and you are logged in as Admin.'}`
+        ? `Reports failed (${e.status}): ${e.message || 'Check API is running and you are signed in as Owner or Team Admin.'}`
         : e instanceof Error
           ? e.message
           : 'Failed to load reports';
@@ -169,7 +169,7 @@ export function ReportsPage() {
           <p className="text-sm font-medium text-red-700">Reports error</p>
           <p className="mt-1 text-sm text-red-600">{error}</p>
           <p className="mt-2 text-xs text-slate-500">
-            Ensure the API is running (e.g. port 3000 or VITE_API_BASE_URL) and you are signed in as Admin.
+            Ensure the API is running (e.g. port 3000 or VITE_API_BASE_URL) and you are signed in as Owner or Team Admin.
           </p>
         </div>
       )}
