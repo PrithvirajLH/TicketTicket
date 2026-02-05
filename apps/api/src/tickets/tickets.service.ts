@@ -33,6 +33,7 @@ import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
+import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 
@@ -290,13 +291,14 @@ export class TicketsService {
     assignedToMe: number;
     triage: number;
     open: number;
+    unassigned: number;
   }> {
     const accessFilter = this.buildAccessFilter(user);
     const openFilter: Prisma.TicketWhereInput = {
       status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
     };
 
-    const [assignedToMe, triage, openTotal] = await Promise.all([
+    const [assignedToMe, triage, openTotal, unassigned] = await Promise.all([
       this.prisma.ticket.count({
         where: {
           AND: [
@@ -320,9 +322,71 @@ export class TicketsService {
           AND: [accessFilter, openFilter],
         },
       }),
+      this.prisma.ticket.count({
+        where: {
+          AND: [
+            accessFilter,
+            openFilter,
+            { assigneeId: null },
+          ],
+        },
+      }),
     ]);
 
-    return { assignedToMe, triage, open: openTotal };
+    return { assignedToMe, triage, open: openTotal, unassigned };
+  }
+
+  async getMetrics(user: AuthUser): Promise<{
+    total: number;
+    open: number;
+    resolved: number;
+    byPriority: Record<TicketPriority, number>;
+    byTeam: Array<{ teamId: string | null; total: number }>;
+  }> {
+    const accessFilter = this.buildAccessFilter(user);
+    const openFilter: Prisma.TicketWhereInput = {
+      status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+    };
+    const resolvedFilter: Prisma.TicketWhereInput = {
+      status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+    };
+
+    const [total, open, resolved, priorityRows, teamRows] = await Promise.all([
+      this.prisma.ticket.count({ where: accessFilter }),
+      this.prisma.ticket.count({ where: { AND: [accessFilter, openFilter] } }),
+      this.prisma.ticket.count({ where: { AND: [accessFilter, resolvedFilter] } }),
+      this.prisma.ticket.groupBy({
+        by: ['priority'],
+        where: accessFilter,
+        _count: { _all: true },
+      }),
+      this.prisma.ticket.groupBy({
+        by: ['assignedTeamId'],
+        where: accessFilter,
+        _count: { _all: true },
+      }),
+    ]);
+
+    const byPriority: Record<TicketPriority, number> = {
+      [TicketPriority.P1]: 0,
+      [TicketPriority.P2]: 0,
+      [TicketPriority.P3]: 0,
+      [TicketPriority.P4]: 0,
+    };
+    for (const row of priorityRows) {
+      byPriority[row.priority] = row._count._all;
+    }
+
+    return {
+      total,
+      open,
+      resolved,
+      byPriority,
+      byTeam: teamRows.map((row) => ({
+        teamId: row.assignedTeamId,
+        total: row._count._all,
+      })),
+    };
   }
 
   async getActivity(query: TicketActivityDto, user: AuthUser) {
@@ -365,6 +429,34 @@ export class TicketsService {
         date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
         open: Number(row.open),
         resolved: Number(row.resolved),
+      })),
+    };
+  }
+
+  async getStatusBreakdown(query: TicketStatusDto, user: AuthUser) {
+    const { fromDate, toEndExclusive } = this.activityDateRange(query.from, query.to);
+    const accessCondition = this.accessConditionSql(user, 't');
+    const assigneeCondition =
+      query.scope === 'assigned'
+        ? Prisma.sql`AND t."assigneeId" = ${user.id}`
+        : Prisma.empty;
+    const dateField = query.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateColumn = Prisma.raw(`t."${dateField}"`);
+
+    const rows = await this.prisma.$queryRaw<{ status: TicketStatus; count: bigint }[]>`
+      SELECT t."status" as status, count(*)::bigint as count
+      FROM "Ticket" t
+      WHERE ${accessCondition} ${assigneeCondition}
+        AND ${dateColumn} >= ${fromDate}
+        AND ${dateColumn} < ${toEndExclusive}
+      GROUP BY t."status"
+      ORDER BY t."status" ASC
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        status: row.status,
+        count: Number(row.count),
       })),
     };
   }

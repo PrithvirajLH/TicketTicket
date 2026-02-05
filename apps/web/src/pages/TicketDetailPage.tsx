@@ -80,6 +80,8 @@ export function TicketDetailPage({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const replyEditorRef = useRef<RichTextEditorRef | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
+  const activeTicketIdRef = useRef<string | null>(null);
+  const detailRequestSeqRef = useRef(0);
   const navigate = useNavigate();
   const statusEvents = ticket ? ticket.events.filter((event) => event.type === 'TICKET_STATUS_CHANGED') : [];
   const followers = ticket?.followers ?? [];
@@ -227,27 +229,49 @@ export function TicketDetailPage({
   }, [canManage, ticket?.assignee, navigate]);
 
   async function loadTicketDetail(id: string) {
+    const requestSeq = ++detailRequestSeqRef.current;
+    const isNavigatingToDifferentTicket = activeTicketIdRef.current !== null && activeTicketIdRef.current !== id;
+    activeTicketIdRef.current = id;
+
     setLoadingDetail(true);
     setTicketError(null);
     setAccessDenied(false);
-    setTicket(null);
+    if (isNavigatingToDifferentTicket) {
+      // Avoid briefly showing the wrong ticket while navigating between ids.
+      setTicket(null);
+    }
     try {
       const detail = await fetchTicketById(id);
+      // Guard against out-of-order responses (e.g. rapid navigation / repeated refresh triggers).
+      if (detailRequestSeqRef.current !== requestSeq) {
+        return;
+      }
       setTicket(detail);
     } catch (error) {
+      if (detailRequestSeqRef.current !== requestSeq) {
+        return;
+      }
       if (error instanceof ApiError && error.status === 403) {
         setAccessDenied(true);
         setTicketError('You don’t have access to this ticket.');
       } else {
         setTicketError('Unable to load ticket details.');
       }
+      // Only clear the screen when we navigated to a different ticket id. If this was a refresh
+      // (same id), keep previous data visible to avoid flicker and perceived latency.
+      if (isNavigatingToDifferentTicket) {
+        setTicket(null);
+      }
     } finally {
-      setLoadingDetail(false);
+      if (detailRequestSeqRef.current === requestSeq) {
+        setLoadingDetail(false);
+      }
     }
   }
 
   async function handleReply() {
-    const bodyToSend = htmlMentionsToMarkdown(messageBody);
+    const editorHtml = replyEditorRef.current?.getValue() ?? messageBody;
+    const bodyToSend = htmlMentionsToMarkdown(editorHtml);
     if (!ticketId || !bodyToSend.trim() || !ticket) {
       return;
     }
@@ -295,7 +319,7 @@ export function TicketDetailPage({
     try {
       const updated = await assignTicket(ticket.id, {});
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
+      void loadTicketDetail(ticket.id);
     } catch (error) {
       setActionError('Unable to assign ticket.');
     } finally {
@@ -312,7 +336,7 @@ export function TicketDetailPage({
     try {
       const updated = await assignTicket(ticket.id, { assigneeId: assignToId });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
+      void loadTicketDetail(ticket.id);
     } catch (error) {
       setActionError('Unable to assign ticket.');
     } finally {
@@ -329,7 +353,7 @@ export function TicketDetailPage({
     try {
       const updated = await transitionTicket(ticket.id, { status: nextStatus });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
+      void loadTicketDetail(ticket.id);
     } catch (error) {
       setActionError('Unable to change status.');
     } finally {
@@ -349,7 +373,7 @@ export function TicketDetailPage({
         assigneeId: transferAssigneeId || undefined
       });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
+      void loadTicketDetail(ticket.id);
     } catch (error) {
       setActionError('Unable to transfer ticket.');
     } finally {
@@ -369,7 +393,7 @@ export function TicketDetailPage({
       } else {
         await followTicket(ticket.id);
       }
-      await loadTicketDetail(ticket.id);
+      void loadTicketDetail(ticket.id);
     } catch (error) {
       setFollowError('Unable to update followers.');
     } finally {
@@ -391,7 +415,7 @@ export function TicketDetailPage({
       for (const file of Array.from(files)) {
         await uploadTicketAttachment(ticketId, file);
       }
-      await loadTicketDetail(ticketId);
+      void loadTicketDetail(ticketId);
     } catch (error) {
       setAttachmentError('Unable to upload attachment.');
     } finally {
@@ -493,18 +517,23 @@ export function TicketDetailPage({
       )}
       <div className="grid gap-6 xl:grid-cols-[1.6fr_0.8fr]">
         <div className="space-y-6">
-          {loadingDetail && (
+          {loadingDetail && !ticket && (
             <div className="glass-card p-5 animate-pulse">
               <div className="h-3 w-24 rounded-full bg-slate-200" />
               <div className="mt-3 h-6 w-96 rounded-full bg-slate-200" />
               <div className="mt-3 h-3 w-48 rounded-full bg-slate-100" />
             </div>
           )}
-          {!loadingDetail && ticket && (
+          {ticket && (
             <div className="glass-card p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">Ticket overview</p>
+                  {loadingDetail && (
+                    <p className="mt-1 text-xs text-slate-400" aria-live="polite">
+                      Refreshing…
+                    </p>
+                  )}
                   <h2 className="text-2xl font-semibold text-slate-900 mt-1">{ticket.subject}</h2>
                   {ticket.description && (
                     <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap max-w-3xl">{ticket.description}</p>
@@ -617,7 +646,7 @@ export function TicketDetailPage({
                 </button>
               </div>
             )}
-            {loadingDetail && (
+            {loadingDetail && !ticket && (
               <div className="mt-4 space-y-3">
                 {Array.from({ length: 4 }).map((_, index) => (
                   <div

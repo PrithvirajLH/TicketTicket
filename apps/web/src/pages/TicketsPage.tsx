@@ -48,8 +48,12 @@ export function TicketsPage({
   const tableSettings = useTableSettings();
 
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
+  const ticketsRequestSeqRef = useRef(0);
   const [listMeta, setListMeta] = useState<{ page: number; pageSize: number; total: number; totalPages: number } | null>(null);
+  // loadingTickets: initial load (no prior data) -> show skeleton instead of content.
+  // refreshingTickets: subsequent loads -> keep previous data visible and show a subtle indicator.
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const [refreshingTickets, setRefreshingTickets] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
@@ -59,6 +63,7 @@ export function TicketsPage({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const ticketRowRefs = useRef<(HTMLDivElement | null)[]>([]);
   const focusedIndexRef = useRef(0);
+  const [searchDraft, setSearchDraft] = useState(filters.q);
 
   useFocusSearchOnShortcut(searchInputRef);
 
@@ -66,10 +71,30 @@ export function TicketsPage({
     focusedIndexRef.current = focusedTicketIndex;
   }, [focusedTicketIndex]);
 
+  // Keep input text in sync if filters.q changes externally (e.g. back/forward navigation).
+  useEffect(() => {
+    setSearchDraft(filters.q);
+  }, [filters.q]);
+
+  // Debounce search to avoid firing a network request on every keystroke.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const next = searchDraft;
+      if (next === filters.q) return;
+      setFilters({ q: next }, { replace: true });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchDraft, filters.q, setFilters]);
+
   const loadTickets = useCallback(async () => {
-    setLoadingTickets(true);
+    const requestSeq = ++ticketsRequestSeqRef.current;
+    const hasPreviousData = tickets.length > 0;
+    if (hasPreviousData) {
+      setRefreshingTickets(true);
+    } else {
+      setLoadingTickets(true);
+    }
     setTicketError(null);
-    setTickets([]);
     try {
       const effectiveSort =
         filters.statusGroup === 'resolved'
@@ -81,16 +106,25 @@ export function TicketsPage({
         ...apiParams,
         sort: effectiveSort,
       });
+      if (ticketsRequestSeqRef.current !== requestSeq) {
+        return;
+      }
       setTickets(response.data);
       setListMeta(response.meta ?? null);
     } catch (error) {
+      if (ticketsRequestSeqRef.current !== requestSeq) {
+        return;
+      }
       setTicketError('Unable to load tickets.');
-      setTickets([]);
+      // Keep previous tickets visible to reduce flicker; only clear meta (pagination) since it may be stale.
       setListMeta(null);
     } finally {
-      setLoadingTickets(false);
+      if (ticketsRequestSeqRef.current === requestSeq) {
+        setLoadingTickets(false);
+        setRefreshingTickets(false);
+      }
     }
-  }, [apiParams, filters.statusGroup, filters.sort]);
+  }, [apiParams, filters.statusGroup, filters.sort, tickets.length]);
 
   // Refetch when URL search params or refreshKey change (URL is source of truth for filters)
   const searchParamsString = searchParams.toString();
@@ -271,7 +305,10 @@ export function TicketsPage({
               <h3 className="text-lg font-semibold text-slate-900">
                 {role === 'EMPLOYEE' ? 'Your tickets' : filters.scope === 'created' ? 'Created by me' : 'Team tickets'}
               </h3>
-              <p className="text-sm text-slate-500">Filter and search tickets.</p>
+              <p className="text-sm text-slate-500">
+                Filter and search tickets.
+                {refreshingTickets ? <span className="ml-2 text-xs text-slate-400">Refreshing…</span> : null}
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
@@ -281,22 +318,10 @@ export function TicketsPage({
                   type="text"
                   className="pl-9 pr-4 py-2 rounded-full border border-slate-200 bg-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                   placeholder="Search subject or description"
-                  value={filters.q}
-                  onChange={(event) => setFilters({ q: event.target.value })}
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
                 />
               </div>
-              {role !== 'EMPLOYEE' && (
-                <select
-                  className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
-                  value={filters.scope}
-                  onChange={(event) => setFilters({ scope: event.target.value as TicketScope })}
-                >
-                  <option value="all">All visible</option>
-                  <option value="created">Created by me</option>
-                  <option value="assigned">Assigned to me</option>
-                  <option value="unassigned">Unassigned</option>
-                </select>
-              )}
               <select
                 className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
                 value={filters.sort}

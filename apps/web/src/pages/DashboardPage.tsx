@@ -1,21 +1,56 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Eye, Layers, Ticket as TicketIcon } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { CheckCircle2, ChevronDown, ChevronRight, Clock, Eye, Ticket as TicketIcon, UserCheck, UserMinus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { fetchTicketActivity, fetchTickets, type NotificationRecord, type TicketActivityPoint, type TicketRecord } from '../api/client';
+import {
+  fetchReportAgentPerformance,
+  fetchReportAgentWorkload,
+  fetchReportReopenRate,
+  fetchReportResolutionTime,
+  fetchReportTicketsByAge,
+  fetchReportTicketsByCategory,
+  fetchReportTicketsByPriority,
+  fetchReportSlaCompliance,
+  fetchTicketActivity,
+  fetchTicketStatusBreakdown,
+  fetchTickets,
+  type AgentPerformanceResponse,
+  type AgentWorkloadResponse,
+  type NotificationRecord,
+  type ReopenRateResponse,
+  type ResolutionTimeResponse,
+  type TicketActivityPoint,
+  type TicketRecord,
+  type TicketStatusPoint,
+  type TicketsByCategoryResponse,
+  type TicketsByPriorityResponse,
+  type TicketAgeBucketResponse
+} from '../api/client';
 import { RelativeTime } from '../components/RelativeTime';
 import { TopBar } from '../components/TopBar';
 import { KPICard } from '../components/dashboard/KPICard';
 import { StatusBadge } from '../components/dashboard/StatusBadge';
 import { TicketActivityChart, type ActivityPoint } from '../components/dashboard/TicketActivityChart';
+import { AgentScorecard } from '../components/reports/AgentScorecard';
+import { AgentWorkloadChart } from '../components/reports/AgentWorkloadChart';
+import { ReopenRateChart } from '../components/reports/ReopenRateChart';
+import { ResolutionTimeChart } from '../components/reports/ResolutionTimeChart';
+import { SlaComplianceChart } from '../components/reports/SlaComplianceChart';
+import { TicketsByStatusChart } from '../components/reports/TicketsByStatusChart';
+import { TicketsByAgeChart } from '../components/reports/TicketsByAgeChart';
+import { TicketsByPriorityChart } from '../components/reports/TicketsByPriorityChart';
 import { formatStatus, formatTicketId } from '../utils/format';
 import type { DashboardStats, Role } from '../types';
 
 const RECENT_TICKETS_COUNT = 6;
-function mapActivitySeries(data: TicketActivityPoint[]): ActivityPoint[] {
-  return data.map((point) => ({
-    ...point,
-    day: new Date(`${point.date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
-  }));
+function mapActivitySeries(data: TicketActivityPoint[], rangeDays: number): ActivityPoint[] {
+  return data.map((point) => {
+    const date = new Date(`${point.date}T00:00:00Z`);
+    const day =
+      rangeDays > 7
+        ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+        : date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+    return { ...point, day };
+  });
 }
 
 function priorityBadgeStyle(priority?: string | null) {
@@ -127,13 +162,40 @@ type DashboardPageProps = {
 export function DashboardPage({ refreshKey, role, headerProps }: DashboardPageProps) {
   const navigate = useNavigate();
   const [recentTickets, setRecentTickets] = useState<TicketRecord[]>([]);
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({ open: 0, resolved: 0, total: 0 });
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    open: 0,
+    resolved: 0,
+    total: 0,
+    unassigned: 0,
+    assignedToMe: 0,
+    resolvedByMe: 0,
+  });
   const [activitySeries, setActivitySeries] = useState<ActivityPoint[]>([]);
+  const [ticketsByStatus, setTicketsByStatus] = useState<TicketStatusPoint[]>([]);
+  const [ticketsByPriority, setTicketsByPriority] = useState<TicketsByPriorityResponse['data']>([]);
+  const [ticketsByAge, setTicketsByAge] = useState<TicketAgeBucketResponse['data']>([]);
+  const [agentWorkload, setAgentWorkload] = useState<AgentWorkloadResponse['data']>([]);
+  const [reopenSeries, setReopenSeries] = useState<ReopenRateResponse['data']>([]);
+  const [queueCategories, setQueueCategories] = useState<TicketsByCategoryResponse['data']>([]);
+  const [slaCompliance, setSlaCompliance] = useState<{ met: number; breached: number; total: number }>({
+    met: 0,
+    breached: 0,
+    total: 0,
+  });
+  const [resolutionTime, setResolutionTime] = useState<ResolutionTimeResponse['data']>([]);
+  const [agentPerformance, setAgentPerformance] = useState<AgentPerformanceResponse['data']>([]);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [refreshingDashboard, setRefreshingDashboard] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
   const isEmployee = role === 'EMPLOYEE';
+  const isAgent = role === 'AGENT';
+  const isLead = role === 'LEAD';
+  const isTeamAdmin = role === 'TEAM_ADMIN';
   const [activityRange, setActivityRange] = useState<'3' | '7' | '30'>(isEmployee ? '3' : '7');
   const [onlyMyTickets, setOnlyMyTickets] = useState(false);
   const [activitySort, setActivitySort] = useState<'recent' | 'oldest'>('recent');
+  const [slaQueueStats, setSlaQueueStats] = useState({ atRisk: 0, overdue: 0 });
+  const [exceptionRange, setExceptionRange] = useState<'24h' | '7d' | '30d'>('7d');
 
   useEffect(() => {
     if (isEmployee) {
@@ -141,7 +203,15 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
       setOnlyMyTickets(false);
       setActivitySort('recent');
     }
-  }, [isEmployee]);
+    if (isAgent) {
+      setOnlyMyTickets(true);
+      setActivitySort('recent');
+    }
+    if (isLead || isTeamAdmin) {
+      setOnlyMyTickets(false);
+      setActivitySort('recent');
+    }
+  }, [isEmployee, isAgent, isLead, isTeamAdmin]);
 
   useEffect(() => {
     let isActive = true;
@@ -151,7 +221,11 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
     };
 
     const loadDashboard = async () => {
-      setLoadingDashboard(true);
+      if (!hasLoadedOnceRef.current) {
+        setLoadingDashboard(true);
+      } else {
+        setRefreshingDashboard(true);
+      }
       try {
         if (isEmployee) {
           const rangeDays = Number(activityRange);
@@ -196,20 +270,53 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
             open: openCount,
             resolved: resolvedCount,
             total: openCount + resolvedCount,
+            unassigned: 0,
+            assignedToMe: 0,
+            resolvedByMe: 0,
           });
           setActivitySeries([]);
+          setTicketsByStatus([]);
+          setTicketsByPriority([]);
+          setTicketsByAge([]);
+          setSlaCompliance({ met: 0, breached: 0, total: 0 });
+          setResolutionTime([]);
+          setAgentPerformance([]);
+          setAgentWorkload([]);
+          setReopenSeries([]);
+          setQueueCategories([]);
+          setSlaQueueStats({ atRisk: 0, overdue: 0 });
         } else {
           const rangeDays = Number(activityRange);
           const fromDate = new Date();
           fromDate.setDate(fromDate.getDate() - rangeDays);
           const updatedFrom = fromDate.toISOString();
           const toDate = new Date();
+          const updatedTo = toDate.toISOString().slice(0, 10);
           const activityFrom = fromDate.toISOString().slice(0, 10);
           const activityTo = toDate.toISOString().slice(0, 10);
-          const scope = onlyMyTickets ? 'assigned' : undefined;
+          const scope = isAgent ? 'assigned' : isLead || isTeamAdmin ? undefined : onlyMyTickets ? 'assigned' : undefined;
           const order = activitySort === 'oldest' ? 'asc' : 'desc';
 
-          const [recentResponse, openResponse, resolvedResponse, activityResponse] = await Promise.all([
+          const [
+            recentResponse,
+            openResponse,
+            resolvedResponse,
+            unassignedResponse,
+            assignedToMeResponse,
+            resolvedByMeResponse,
+            atRiskResponse,
+            overdueResponse,
+            activityResponse,
+            statusResponse,
+            slaResponse,
+            agentResponse,
+            workloadResponse,
+            priorityResponse,
+            resolutionResponse,
+            ageResponse,
+            reopenResponse,
+            categoryResponse
+          ] = await Promise.all([
             fetchTickets({
               pageSize: RECENT_TICKETS_COUNT,
               sort: 'updatedAt',
@@ -221,21 +328,98 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               pageSize: 1,
               statusGroup: 'open',
               updatedFrom,
-              updatedTo: activityTo,
+              updatedTo,
               ...(scope ? { scope } : {}),
             }).catch(() => emptyTicketResponse),
             fetchTickets({
               pageSize: 1,
               statusGroup: 'resolved',
               updatedFrom,
-              updatedTo: activityTo,
+              updatedTo,
               ...(scope ? { scope } : {}),
             }).catch(() => emptyTicketResponse),
+            scope === 'assigned'
+              ? Promise.resolve(emptyTicketResponse)
+              : fetchTickets({
+                  pageSize: 1,
+                  statusGroup: 'open',
+                  scope: 'unassigned',
+                  updatedFrom,
+                  updatedTo,
+                }).catch(() => emptyTicketResponse),
+            fetchTickets({
+              pageSize: 1,
+              statusGroup: 'open',
+              scope: 'assigned',
+              updatedFrom,
+              updatedTo,
+            }).catch(() => emptyTicketResponse),
+            fetchTickets({
+              pageSize: 1,
+              statusGroup: 'resolved',
+              scope: 'assigned',
+              updatedFrom,
+              updatedTo,
+            }).catch(() => emptyTicketResponse),
+            isTeamAdmin
+              ? fetchTickets({
+                  pageSize: 1,
+                  slaStatus: ['at_risk'],
+                  updatedFrom,
+                  updatedTo,
+                }).catch(() => emptyTicketResponse)
+              : Promise.resolve(emptyTicketResponse),
+            isTeamAdmin
+              ? fetchTickets({
+                  pageSize: 1,
+                  slaStatus: ['breached'],
+                  updatedFrom,
+                  updatedTo,
+                }).catch(() => emptyTicketResponse)
+              : Promise.resolve(emptyTicketResponse),
             fetchTicketActivity({
               from: activityFrom,
               to: activityTo,
               ...(scope ? { scope } : {}),
             }).catch(() => ({ data: [] })),
+            fetchTicketStatusBreakdown({
+              from: activityFrom,
+              to: activityTo,
+              ...(isAgent ? { scope: 'assigned' } : {}),
+              dateField: 'updatedAt',
+            }).catch(() => ({ data: [] })),
+            isLead || isTeamAdmin
+              ? fetchReportSlaCompliance({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: { met: 0, breached: 0, total: 0 } }))
+              : Promise.resolve({ data: { met: 0, breached: 0, total: 0 } }),
+            isLead
+              ? fetchReportAgentPerformance({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isLead || isTeamAdmin
+              ? fetchReportAgentWorkload({})
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportTicketsByPriority({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportResolutionTime({ from: activityFrom, to: activityTo, groupBy: 'priority', dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportTicketsByAge({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportReopenRate({ from: activityFrom, to: activityTo })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportTicketsByCategory({ from: activityFrom, to: activityTo, statusGroup: 'open', dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
           ]);
 
           if (!isActive) return;
@@ -247,17 +431,52 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
             open: openCount,
             resolved: resolvedCount,
             total: openCount + resolvedCount,
+            unassigned: unassignedResponse.meta.total,
+            assignedToMe: assignedToMeResponse.meta.total,
+            resolvedByMe: resolvedByMeResponse.meta.total,
           });
-          setActivitySeries(mapActivitySeries(activityResponse.data));
+          setActivitySeries(mapActivitySeries(activityResponse.data, rangeDays));
+          setTicketsByStatus(statusResponse.data);
+          setTicketsByPriority(priorityResponse.data);
+          setTicketsByAge(ageResponse.data);
+          setSlaCompliance(slaResponse.data);
+          setResolutionTime(resolutionResponse.data);
+          setAgentPerformance(agentResponse.data);
+          setAgentWorkload(workloadResponse.data);
+          setReopenSeries(reopenResponse.data);
+          setQueueCategories(categoryResponse.data.slice(0, 6));
+          setSlaQueueStats({
+            atRisk: atRiskResponse.meta.total,
+            overdue: overdueResponse.meta.total,
+          });
         }
       } catch (error) {
         if (!isActive) return;
         setRecentTickets([]);
-        setDashboardStats({ open: 0, resolved: 0, total: 0 });
+        setDashboardStats({
+          open: 0,
+          resolved: 0,
+          total: 0,
+          unassigned: 0,
+          assignedToMe: 0,
+          resolvedByMe: 0,
+        });
         setActivitySeries([]);
+        setTicketsByStatus([]);
+        setTicketsByPriority([]);
+        setTicketsByAge([]);
+        setSlaCompliance({ met: 0, breached: 0, total: 0 });
+        setResolutionTime([]);
+        setAgentPerformance([]);
+        setAgentWorkload([]);
+        setReopenSeries([]);
+        setQueueCategories([]);
+        setSlaQueueStats({ atRisk: 0, overdue: 0 });
       } finally {
         if (isActive) {
           setLoadingDashboard(false);
+          setRefreshingDashboard(false);
+          hasLoadedOnceRef.current = true;
         }
       }
     };
@@ -266,13 +485,20 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
     return () => {
       isActive = false;
     };
-  }, [refreshKey, isEmployee, activityRange, onlyMyTickets, activitySort]);
+  }, [refreshKey, isEmployee, isAgent, isLead, isTeamAdmin, activityRange, onlyMyTickets, activitySort]);
 
-  const miniActivityTickets = useMemo(() => recentTickets.slice(0, 3), [recentTickets]);
   const activityRangeLabel =
     activityRange === '3' ? 'Last 3 days' : activityRange === '7' ? 'Last 7 days' : 'Last 30 days';
   const rowGridClass =
     'grid grid-cols-1 md:grid-cols-[minmax(0,1.35fr)_minmax(0,0.75fr)_minmax(0,0.45fr)_minmax(0,0.55fr)_minmax(0,0.3fr)_minmax(0,0.35fr)] items-start gap-3 md:gap-4';
+  const unassignedPercent = dashboardStats.open
+    ? Math.round(((dashboardStats.unassigned ?? 0) / dashboardStats.open) * 100)
+    : 0;
+  const activeAgents = agentWorkload.filter((row) => row.assignedOpen > 0).length;
+  const reopenTotal = reopenSeries.reduce((sum, row) => sum + row.count, 0);
+  const reopenRatePercent = dashboardStats.total
+    ? Math.round((reopenTotal / dashboardStats.total) * 100)
+    : 0;
 
   return (
     <section className="animate-fade-in min-h-full flex flex-col">
@@ -289,11 +515,16 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                 onOpenSearch={headerProps.onOpenSearch}
                 notificationProps={headerProps.notificationProps}
               />
+              {refreshingDashboard && (
+                <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
+                  Refreshing…
+                </p>
+              )}
             </div>
           )}
-          <div className={`grid gap-4 ${isEmployee ? 'sm:grid-cols-2' : 'md:grid-cols-2 xl:grid-cols-3'} ${headerProps ? 'mt-6' : ''} mb-6`}>
+          <div className={`grid gap-4 ${isEmployee ? 'sm:grid-cols-2' : isTeamAdmin ? 'md:grid-cols-2 xl:grid-cols-5' : 'md:grid-cols-2 xl:grid-cols-4'} ${headerProps ? 'mt-6' : ''} mb-6`}>
             {loadingDashboard
-              ? Array.from({ length: isEmployee ? 2 : 3 }).map((_, index) => (
+              ? Array.from({ length: isEmployee ? 2 : 4 }).map((_, index) => (
                   <div key={`stat-skeleton-${index}`} className="rounded-xl border border-border bg-card p-6 shadow-card animate-pulse">
                     <div className="flex items-center gap-4">
                       <div className="h-12 w-12 rounded-xl bg-muted" />
@@ -306,39 +537,340 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                 ))
               : (
                 <>
-                  <KPICard
-                    icon={TicketIcon}
-                    value={dashboardStats.open}
-                    label={isEmployee ? 'My open tickets' : 'Open tickets'}
-                    variant="blue"
-                  />
-                  <KPICard
-                    icon={CheckCircle2}
-                    value={dashboardStats.resolved}
-                    label={isEmployee ? 'My resolved & closed tickets' : 'Resolved & closed'}
-                    variant="green"
-                  />
-                  {!isEmployee && (
-                    <KPICard
-                      icon={ClipboardList}
-                      value={dashboardStats.total}
-                      label="Total requests"
-                      dropdown={activityRangeLabel}
-                    />
+                  {isEmployee ? (
+                    <>
+                      <KPICard
+                        icon={TicketIcon}
+                        value={dashboardStats.open}
+                        label="My open tickets"
+                        variant="blue"
+                      />
+                      <KPICard
+                        icon={CheckCircle2}
+                        value={dashboardStats.resolved}
+                        label="My resolved & closed tickets"
+                        variant="green"
+                      />
+                    </>
+                  ) : isTeamAdmin ? (
+                    <>
+                      <KPICard
+                        icon={TicketIcon}
+                        value={dashboardStats.open}
+                        label="Open tickets"
+                        variant="blue"
+                      />
+                      <KPICard
+                        icon={Clock}
+                        value={slaQueueStats.atRisk}
+                        label="At risk"
+                        variant="default"
+                        helper="Near breach window"
+                      />
+                      <KPICard
+                        icon={Clock}
+                        value={slaQueueStats.overdue}
+                        label="Overdue"
+                        variant="blue"
+                        helper="Breached SLA"
+                      />
+                      <KPICard
+                        icon={UserCheck}
+                        value={activeAgents}
+                        label="Active agents"
+                        variant="default"
+                        helper={`${unassignedPercent}% unassigned`}
+                      />
+                      <KPICard
+                        icon={TicketIcon}
+                        value={dashboardStats.total}
+                        label="Total requests"
+                        variant="green"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <KPICard
+                        icon={TicketIcon}
+                        value={dashboardStats.open}
+                        label="Total open tickets"
+                        variant="blue"
+                      />
+                      <KPICard
+                        icon={UserMinus}
+                        value={dashboardStats.unassigned ?? 0}
+                        label="Unassigned tickets"
+                        variant="default"
+                      />
+                      <KPICard
+                        icon={UserCheck}
+                        value={dashboardStats.assignedToMe ?? 0}
+                        label="Assigned to me"
+                        variant="blue"
+                      />
+                      <KPICard
+                        icon={CheckCircle2}
+                        value={dashboardStats.resolvedByMe ?? 0}
+                        label="Resolved by me"
+                        variant="green"
+                      />
+                    </>
                   )}
                 </>
               )}
           </div>
 
           <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className={`grid gap-0 ${isEmployee ? '' : 'lg:grid-cols-5'} divide-y lg:divide-y-0 lg:divide-x divide-border`}>
-              <div className={`${isEmployee ? '' : 'lg:col-span-3'} p-6`}>
+            {isTeamAdmin ? (
+              <div className="p-6">
+                <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold leading-tight text-foreground">Queue operations</h2>
+                    <p className="mt-0.5 text-sm leading-snug text-muted-foreground">
+                      Ops metrics and queue signals for your team.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-card">
+                    <span className="text-slate-500">Updated in:</span>
+                    <div className="relative">
+                      <select
+                        className="appearance-none bg-transparent pr-5 text-xs font-semibold text-foreground outline-none focus:outline-none focus:ring-0"
+                        value={activityRange}
+                        onChange={(event) => setActivityRange(event.target.value as '3' | '7' | '30')}
+                        title="Filter by last updated date"
+                      >
+                        <option value="3">Last 3 days</option>
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </label>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-12">
+                  <div className="space-y-6 lg:col-span-4">
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Queues</h3>
+                        <span className="text-[11px] text-muted-foreground">Open now</span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-md border border-border/80 bg-slate-50 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            At-risk queue
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-slate-900">
+                            {slaQueueStats.atRisk}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">Near breach window</div>
+                        </div>
+                        <div className="rounded-md border border-border/80 bg-slate-50 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Breached SLA
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-slate-900">
+                            {slaQueueStats.overdue}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">Overdue tickets</div>
+                        </div>
+                        <div className="rounded-md border border-border/80 bg-slate-50 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Unassigned
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-slate-900">
+                            {unassignedPercent}%
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {dashboardStats.unassigned ?? 0} tickets
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-border/80 bg-slate-50 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Re-open rate
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-slate-900">
+                            {reopenRatePercent}%
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {reopenTotal} reopens
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-5 border-t border-border/70 pt-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                            Queues by category
+                          </h4>
+                          <span className="text-[11px] text-muted-foreground">Open tickets</span>
+                        </div>
+                        {queueCategories.length === 0 ? (
+                          <p className="text-sm text-slate-500">No queue data available.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {queueCategories.map((queue) => (
+                              <div key={queue.id} className="flex items-center justify-between rounded-md border border-border/70 bg-white px-3 py-2 text-sm">
+                                <span className="font-medium text-slate-700">{queue.name}</span>
+                                <span className="text-sm font-semibold text-slate-900">{queue.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 lg:col-span-5">
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Tickets by age</h3>
+                        <label className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold text-foreground shadow-card">
+                          <span className="text-slate-500">Range:</span>
+                          <select
+                            className="appearance-none bg-transparent pr-5 text-[11px] font-semibold text-foreground outline-none focus:outline-none focus:ring-0"
+                            value={activityRange}
+                            onChange={(event) => setActivityRange(event.target.value as '3' | '7' | '30')}
+                          >
+                            <option value="7">This week</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="3">Last 3 days</option>
+                          </select>
+                        </label>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[220px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <TicketsByAgeChart data={ticketsByAge} />
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Routing exceptions</h3>
+                        <label className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold text-foreground shadow-card">
+                          <span className="text-slate-500">Window:</span>
+                          <select
+                            className="appearance-none bg-transparent pr-5 text-[11px] font-semibold text-foreground outline-none focus:outline-none focus:ring-0"
+                            value={exceptionRange}
+                            onChange={(event) => setExceptionRange(event.target.value as '24h' | '7d' | '30d')}
+                          >
+                            <option value="24h">Last 24h</option>
+                            <option value="7d">Last 7 days</option>
+                            <option value="30d">Last 30 days</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        {[
+                          { label: 'Emails not parsed', severity: 'Incident', count: 0 },
+                          { label: 'Tickets auto-assigned', severity: 'Warning', count: 0 },
+                          { label: 'Failed webhooks', severity: 'Incident', count: 0 },
+                        ].map((item) => (
+                          <div key={item.label} className="flex items-center justify-between rounded-md border border-border/70 bg-white px-3 py-2">
+                            <div>
+                              <div className="text-sm font-medium text-slate-700">{item.label}</div>
+                              <div className="text-[11px] text-muted-foreground">{item.severity}</div>
+                            </div>
+                            <div className="text-sm font-semibold text-slate-900">{item.count}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Admin controls</h3>
+                        <span className="text-[11px] text-muted-foreground">Tools & settings</span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        {[
+                          { label: 'Routing rules', href: '/routing', enabled: true },
+                          { label: 'Business hours', href: '', enabled: false },
+                          { label: 'Macros', href: '', enabled: false },
+                          { label: 'Tags', href: '', enabled: false },
+                        ].map((item) => (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => item.enabled && navigate(item.href)}
+                            className={`flex w-full items-center justify-between rounded-md border border-border/70 bg-white px-3 py-2 text-left transition ${
+                              item.enabled ? 'hover:bg-slate-50' : 'opacity-60 cursor-not-allowed'
+                            }`}
+                          >
+                            <span className="font-medium text-slate-700">{item.label}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {item.enabled ? 'Open' : 'Coming soon'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 lg:col-span-3">
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">System health</h3>
+                        <span className="text-[11px] text-muted-foreground">Integrations</span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        {[
+                          { label: 'Email server', status: 'Online' },
+                          { label: 'Jira', status: 'Online' },
+                          { label: 'Slack', status: 'Online' },
+                        ].map((item) => (
+                          <div key={item.label} className="flex items-center justify-between rounded-md border border-border/70 bg-white px-3 py-2">
+                            <span className="font-medium text-slate-700">{item.label}</span>
+                            <span className="flex items-center gap-2 text-[11px] font-semibold text-emerald-600">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">SLA compliance</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[220px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <SlaComplianceChart data={{ ...slaCompliance, atRisk: slaQueueStats.atRisk }} />
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Reopen rate</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[220px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <ReopenRateChart data={reopenSeries} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className={`grid gap-0 ${isEmployee ? '' : 'lg:grid-cols-5'} divide-y lg:divide-y-0 lg:divide-x divide-border`}>
+                <div className={`${isEmployee ? '' : 'lg:col-span-3'} p-6`}>
                 <div className="flex h-full flex-col">
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-lg font-semibold leading-tight text-foreground">Recent activity</h2>
+                      <h2 className="text-lg font-semibold leading-tight text-foreground">
+                        {isLead ? 'Team insights' : isTeamAdmin ? 'Queue operations' : 'Recent activity'}
+                      </h2>
                       <p className="mt-0.5 text-sm leading-snug text-muted-foreground">
-                        Latest updates across your tickets.
+                        {isLead
+                          ? 'Operational metrics across your team.'
+                          : isTeamAdmin
+                            ? 'Queue health and throughput for your team.'
+                            : 'Latest updates across your tickets.'}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -358,21 +890,23 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                           <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         </div>
                       </label>
-                      <label className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-card">
-                        <span className="text-slate-500">Sort:</span>
-                        <div className="relative">
-                          <select
-                            className="appearance-none bg-transparent pr-5 text-xs font-semibold text-foreground outline-none focus:outline-none focus:ring-0"
-                            value={activitySort}
-                            onChange={(event) => setActivitySort(event.target.value as 'recent' | 'oldest')}
-                          >
-                            <option value="recent">Most recent</option>
-                            <option value="oldest">Oldest</option>
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                        </div>
-                      </label>
-                      {!isEmployee && (
+                      {!isLead && !isTeamAdmin && (
+                        <label className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-card">
+                          <span className="text-slate-500">Sort:</span>
+                          <div className="relative">
+                            <select
+                              className="appearance-none bg-transparent pr-5 text-xs font-semibold text-foreground outline-none focus:outline-none focus:ring-0"
+                              value={activitySort}
+                              onChange={(event) => setActivitySort(event.target.value as 'recent' | 'oldest')}
+                            >
+                              <option value="recent">Most recent</option>
+                              <option value="oldest">Oldest</option>
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                          </div>
+                        </label>
+                      )}
+                      {!isEmployee && !isAgent && !isLead && !isTeamAdmin && (
                         <label className="group inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-card cursor-pointer">
                           <span className="text-slate-500">Only my tickets</span>
                           <input
@@ -389,7 +923,85 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                     </div>
                   </div>
 
-                  {loadingDashboard && (
+                  {isLead && (
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-foreground">Agent workload</h3>
+                          <span className="text-[11px] text-muted-foreground">Open now</span>
+                        </div>
+                        {loadingDashboard ? (
+                          <div className="h-[240px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                        ) : (
+                          <AgentWorkloadChart data={agentWorkload} />
+                        )}
+                      </div>
+
+                      <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-foreground">Ticket status</h3>
+                          <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                        </div>
+                        {loadingDashboard ? (
+                          <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                        ) : (
+                          <TicketsByStatusChart data={ticketsByStatus} height={180} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {isTeamAdmin && (
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-foreground">Queue activity</h3>
+                          <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                        </div>
+                        {loadingDashboard ? (
+                          <div className="h-48 w-full rounded-lg bg-muted/60 animate-pulse" />
+                        ) : (
+                          <TicketActivityChart data={activitySeries} />
+                        )}
+                        <div className="mt-4 flex items-center gap-6 px-1">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-progress))]" />
+                            <span className="text-sm text-muted-foreground">Open</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-resolved))]" />
+                            <span className="text-sm text-muted-foreground">Resolved</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-foreground">Tickets by status</h3>
+                          <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                        </div>
+                        {loadingDashboard ? (
+                          <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                        ) : (
+                          <TicketsByStatusChart data={ticketsByStatus} height={180} />
+                        )}
+                      </div>
+
+                      <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-foreground">Tickets by priority</h3>
+                          <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                        </div>
+                        {loadingDashboard ? (
+                          <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                        ) : (
+                          <TicketsByPriorityChart data={ticketsByPriority} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {!isLead && !isTeamAdmin && loadingDashboard && (
                     <div className="rounded-md border border-border/60 bg-white overflow-hidden">
                       <div className="overflow-auto animate-pulse">
                         <div className="hidden md:grid grid-cols-[minmax(0,1.35fr)_minmax(0,0.75fr)_minmax(0,0.45fr)_minmax(0,0.55fr)_minmax(0,0.3fr)_minmax(0,0.35fr)] items-center gap-4 px-3 py-2.5 text-sm font-semibold text-slate-700 border-b border-border/80 bg-slate-50 shadow-sm">
@@ -434,13 +1046,13 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                     </div>
                   )}
 
-                  {!loadingDashboard && recentTickets.length === 0 && (
+                  {!isLead && !isTeamAdmin && !loadingDashboard && recentTickets.length === 0 && (
                     <p className="text-sm text-muted-foreground">
                       {isEmployee ? 'No recent activity in the last 3 days.' : 'No recent tickets yet.'}
                     </p>
                   )}
 
-                  {!loadingDashboard && recentTickets.length > 0 && (
+                  {!isLead && !isTeamAdmin && !loadingDashboard && recentTickets.length > 0 && (
                     <div className="rounded-md border border-border/60 bg-white min-w-0 overflow-hidden">
                       <div className="min-w-0 overflow-auto">
                         <div className="hidden md:grid grid-cols-[minmax(0,1.35fr)_minmax(0,0.75fr)_minmax(0,0.45fr)_minmax(0,0.55fr)_minmax(0,0.3fr)_minmax(0,0.35fr)] items-center gap-4 px-3 py-2.5 text-sm font-semibold text-slate-700 border-b border-border/80 bg-slate-50 shadow-sm">
@@ -526,108 +1138,117 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                     </div>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => navigate('/tickets')}
-                    className="mt-4 inline-flex items-center gap-2 text-left text-sm font-medium text-primary transition-colors hover:text-primary/80"
-                  >
-                    <Eye className="h-4 w-4 shrink-0" />
-                    {isEmployee ? 'View my tickets' : 'View all tickets'}
-                  </button>
+                  {!isLead && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/tickets')}
+                      className="mt-4 inline-flex items-center gap-2 text-left text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                    >
+                      <Eye className="h-4 w-4 shrink-0" />
+                      {isEmployee ? 'View my tickets' : 'View all tickets'}
+                    </button>
+                  )}
                 </div>
               </div>
               {!isEmployee && (
                 <div className="lg:col-span-2 p-6 bg-card/50">
                   <div className="flex h-full flex-col">
-                    <div className="mb-4 flex items-center justify-between">
-                      <h2 className="text-lg font-semibold leading-tight text-foreground">Ticket Activity</h2>
-                      <span className="text-[13px] text-muted-foreground" title="Controlled by Updated in selector">
-                        {activityRangeLabel}
-                      </span>
-                    </div>
-
-                    {loadingDashboard ? (
-                      <div className="h-48 w-full rounded-xl bg-muted/60 animate-pulse" />
-                    ) : (
-                      <TicketActivityChart data={activitySeries} />
-                    )}
-
-                    <div className="mb-4 mt-4 flex items-center gap-6 px-1">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-progress))]" />
-                        <span className="text-sm text-muted-foreground">Open</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-resolved))]" />
-                        <span className="text-sm text-muted-foreground">Resolved</span>
-                      </div>
-                    </div>
-
-                    {loadingDashboard && (
-                      <div className="space-y-2">
-                        {Array.from({ length: 3 }).map((_, index) => (
-                          <div
-                            key={`mini-skeleton-${index}`}
-                            className="flex items-center gap-3 rounded-xl border border-border bg-card/50 p-2.5 shadow-card animate-pulse"
-                          >
-                            <div className="h-8 w-8 rounded-full bg-muted" />
-                            <div className="flex-1">
-                              <div className="h-3 w-24 rounded bg-muted/70" />
-                            </div>
-                            <div className="h-3 w-10 rounded bg-muted/60" />
+                    {isLead ? (
+                      <div className="space-y-6">
+                        <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-foreground">SLA performance</h3>
+                            <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          {loadingDashboard ? (
+                            <div className="h-[240px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                          ) : (
+                            <SlaComplianceChart data={{ ...slaCompliance, atRisk: slaQueueStats.atRisk }} />
+                          )}
+                        </div>
 
-                    {!loadingDashboard && miniActivityTickets.length === 0 && (
-                      <p className="text-sm text-muted-foreground">No ticket activity yet.</p>
-                    )}
-
-                    {!loadingDashboard && miniActivityTickets.length > 0 && (
-                      <div className="space-y-2">
-                        {miniActivityTickets.map((ticket, index) => {
-                          const teamLabel = ticket.assignedTeam?.name ?? 'Unassigned';
-                          const ticketId = formatTicketId(ticket);
-                          return (
-                            <button
-                              key={`mini-${ticket.id}`}
-                              type="button"
-                              onClick={() => navigate(`/tickets/${ticket.id}`)}
-                              className="flex w-full items-start gap-3 rounded-lg border border-border bg-card/50 px-2.5 py-2 text-left transition-colors hover:bg-card animate-fade-in"
-                              style={{ animationDelay: `${index * 50}ms` }}
-                            >
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent">
-                                <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-semibold leading-snug text-foreground">
-                                  <span className="mr-2 font-mono text-[11px] font-semibold text-slate-600">{ticketId}</span>
-                                  <span className="text-slate-300">•</span>
-                                  <span className="ml-2">{ticket.subject}</span>
-                                </div>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${priorityBadgeStyle(ticket.priority)}`}>
-                                    {ticket.priority ?? 'P3'}
-                                  </span>
-                                  <span className="inline-flex items-center gap-1 text-slate-500">
-                                    <span className="truncate">{teamLabel}</span>
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-0.5">
-                                <StatusBadge status={ticket.status} />
-                                <RelativeTime value={ticket.updatedAt} variant="compact" className="text-[11px] text-muted-foreground" />
-                              </div>
-                            </button>
-                          );
-                        })}
+                        <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-foreground">Agent performance</h3>
+                            <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                          </div>
+                          {loadingDashboard ? (
+                            <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                          ) : (
+                            <AgentScorecard data={agentPerformance} />
+                          )}
+                        </div>
                       </div>
+                    ) : isTeamAdmin ? (
+                      <div className="space-y-6">
+                        <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-foreground">SLA performance</h3>
+                            <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                          </div>
+                          {loadingDashboard ? (
+                            <div className="h-[240px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                          ) : (
+                            <SlaComplianceChart data={{ ...slaCompliance, atRisk: slaQueueStats.atRisk }} />
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-foreground">Resolution time by priority</h3>
+                            <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                          </div>
+                          {loadingDashboard ? (
+                            <div className="h-[240px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                          ) : (
+                            <ResolutionTimeChart data={resolutionTime} />
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-4 flex items-center justify-between">
+                          <h2 className="text-lg font-semibold leading-tight text-foreground">Ticket Activity</h2>
+                          <span className="text-[13px] text-muted-foreground" title="Controlled by Updated in selector">
+                            {activityRangeLabel}
+                          </span>
+                        </div>
+
+                        {loadingDashboard ? (
+                          <div className="h-48 w-full rounded-xl bg-muted/60 animate-pulse" />
+                        ) : (
+                          <TicketActivityChart data={activitySeries} />
+                        )}
+
+                        <div className="mb-6 mt-4 flex items-center gap-6 px-1">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-progress))]" />
+                            <span className="text-sm text-muted-foreground">Open</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--status-resolved))]" />
+                            <span className="text-sm text-muted-foreground">Resolved</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-lg font-semibold leading-tight text-foreground">Tickets by status</h3>
+                            <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                          </div>
+                          {loadingDashboard ? (
+                            <div className="h-[200px] w-full rounded-xl bg-muted/60 animate-pulse" />
+                          ) : (
+                            <TicketsByStatusChart data={ticketsByStatus} />
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>

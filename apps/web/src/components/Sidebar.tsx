@@ -6,6 +6,7 @@ export type SidebarItem = {
   label: string;
   icon: LucideIcon;
   badge?: number;
+  children?: SidebarItem[];
 };
 
 export function Sidebar({
@@ -49,34 +50,70 @@ export function Sidebar({
           const Icon = item.icon;
           const label = item.key === 'created' && currentRole === 'EMPLOYEE' ? 'My Tickets' : item.label;
           return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => onSelect(item.key)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                collapsed ? 'justify-center' : ''
-              } ${
-                isActive ? 'bg-slate-900 text-white shadow-soft' : 'text-slate-700 hover:bg-slate-100/70'
-              }`}
-            >
-              <span className="flex-shrink-0">
-                <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-600'}`} />
-              </span>
-              {!collapsed && (
-                <span className="flex-1 text-left truncate flex items-center gap-2">
-                  {label}
-                  {typeof item.badge === 'number' && item.badge > 0 && (
-                    <span
-                      className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-semibold ${
-                        isActive ? 'bg-white/90 text-slate-900' : 'bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {item.badge > 99 ? '99+' : item.badge}
-                    </span>
-                  )}
+            <div key={item.key}>
+              <button
+                type="button"
+                onClick={() => onSelect(item.key)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  collapsed ? 'justify-center' : ''
+                } ${
+                  isActive ? 'bg-slate-900 text-white shadow-soft' : 'text-slate-700 hover:bg-slate-100/70'
+                }`}
+              >
+                <span className="flex-shrink-0">
+                  <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-600'}`} />
                 </span>
+                {!collapsed && (
+                  <span className="flex-1 text-left truncate flex items-center gap-2">
+                    {label}
+                    {typeof item.badge === 'number' && item.badge > 0 && (
+                      <span
+                        className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-semibold ${
+                          isActive ? 'bg-white/90 text-slate-900' : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+              {!collapsed && item.children && item.children.length > 0 && (
+                <div className="mt-1.5 ml-11 space-y-1 border-l border-slate-200/70 pl-3">
+                  {item.children.map((child) => {
+                    const childActive = activeKey === child.key;
+                    return (
+                      <button
+                        key={child.key}
+                        type="button"
+                        onClick={() => onSelect(child.key)}
+                        className={`w-full text-left text-[12px] font-medium px-2.5 py-1.5 rounded-md transition-colors flex items-center gap-2 ${
+                          childActive
+                            ? 'bg-slate-900 text-white shadow-soft'
+                            : 'text-slate-600 hover:bg-slate-100/70'
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            childActive ? 'bg-white' : 'bg-slate-300'
+                          }`}
+                        />
+                        <span className="truncate flex-1">{child.label}</span>
+                        {typeof child.badge === 'number' && child.badge > 0 && (
+                          <span
+                            className={`flex-shrink-0 min-w-[1.25rem] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-semibold ${
+                              childActive ? 'bg-white/90 text-slate-900' : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {child.badge > 99 ? '99+' : child.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
-            </button>
+            </div>
           );
         })}
       </nav>

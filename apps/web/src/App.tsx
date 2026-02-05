@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Settings,
   Ticket,
-  UserCheck,
   Users
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -51,6 +50,7 @@ type NavKey =
   | 'dashboard'
   | 'tickets'
   | 'assigned'
+  | 'unassigned'
   | 'created'
   | 'completed'
   | 'triage'
@@ -80,8 +80,16 @@ const personas = import.meta.env.VITE_E2E_MODE === 'true' ? e2ePersonas : defaul
 
 const navItems: (SidebarItem & { roles: Role[] })[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
-  { key: 'tickets', label: 'All Tickets', icon: Ticket, roles: ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
-  { key: 'assigned', label: 'Assigned to Me', icon: UserCheck, roles: ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  {
+    key: 'tickets',
+    label: 'All Tickets',
+    icon: Ticket,
+    roles: ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'],
+    children: [
+      { key: 'assigned', label: 'Assigned to Me', icon: Ticket },
+      { key: 'unassigned', label: 'Unassigned', icon: Ticket },
+    ],
+  },
   { key: 'created', label: 'Created by Me', icon: FileText, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'completed', label: 'Completed', icon: CheckCircle, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'triage', label: 'Triage Board', icon: ClipboardList, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
@@ -122,6 +130,9 @@ function deriveNavKey(
   if (pathname.startsWith('/tickets')) {
     if (ticketPresetScope === 'assigned') {
       return 'assigned';
+    }
+    if (ticketPresetScope === 'unassigned') {
+      return 'unassigned';
     }
     if (ticketPresetScope === 'created') {
       return 'created';
@@ -168,6 +179,7 @@ function App() {
     assignedToMe: number;
     triage: number;
     open: number;
+    unassigned: number;
   } | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
@@ -300,6 +312,13 @@ function App() {
       return;
     }
 
+    if (key === 'unassigned') {
+      setTicketPresetStatus('open');
+      setTicketPresetScope('unassigned');
+      navigate('/tickets');
+      return;
+    }
+
     if (key === 'created') {
       setTicketPresetStatus('open');
       setTicketPresetScope('created');
@@ -354,14 +373,23 @@ function App() {
       key: item.key,
       label: item.label,
       icon: item.icon,
-      badge:
-        item.key === 'assigned'
-          ? ticketCounts?.assignedToMe
-          : item.key === 'triage'
+        badge:
+          item.key === 'triage'
             ? ticketCounts?.triage
             : item.key === 'tickets'
               ? ticketCounts?.open
-              : undefined
+              : undefined,
+      children: item.children?.map((child) => ({
+        key: child.key,
+        label: child.label,
+        icon: child.icon,
+        badge:
+          child.key === 'assigned'
+            ? ticketCounts?.assignedToMe
+            : child.key === 'unassigned'
+              ? ticketCounts?.unassigned
+              : undefined,
+      })),
     }));
   }, [currentPersona.role, ticketCounts]);
 
@@ -377,6 +405,10 @@ function App() {
     assigned: {
       title: 'Assigned to Me',
       subtitle: 'Tickets waiting for your action.'
+    },
+    unassigned: {
+      title: 'Unassigned',
+      subtitle: 'Tickets waiting to be picked up.'
     },
     created: {
       title: currentPersona.role === 'EMPLOYEE' ? 'My Tickets' : 'Created by Me',

@@ -3,12 +3,7 @@ import { Download } from 'lucide-react';
 import {
   ApiError,
   fetchCategories,
-  fetchReportAgentPerformance,
-  fetchReportResolutionTime,
-  fetchReportSlaCompliance,
-  fetchReportTicketVolume,
-  fetchReportTicketsByPriority,
-  fetchReportTicketsByStatus,
+  fetchReportSummary,
   fetchTeams,
   type ReportQuery,
   type TeamRef,
@@ -76,20 +71,13 @@ export function ReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [volRes, slaRes, resRes, priRes, statusRes, agentRes] = await Promise.all([
-        fetchReportTicketVolume(reportQuery),
-        fetchReportSlaCompliance(reportQuery),
-        fetchReportResolutionTime({ ...reportQuery, groupBy: 'team' }),
-        fetchReportTicketsByPriority(reportQuery),
-        fetchReportTicketsByStatus(reportQuery),
-        fetchReportAgentPerformance(reportQuery),
-      ]);
-      setVolume(volRes.data);
-      setSla(slaRes.data);
-      setResolutionTime(resRes.data);
-      setByPriority(priRes.data);
-      setByStatus(statusRes.data);
-      setAgents(agentRes.data);
+      const summary = await fetchReportSummary(reportQuery);
+      setVolume(summary.ticketVolume.data);
+      setSla(summary.slaCompliance.data);
+      setResolutionTime(summary.resolutionTime.data);
+      setByPriority(summary.ticketsByPriority.data);
+      setByStatus(summary.ticketsByStatus.data);
+      setAgents(summary.agentPerformance.data);
     } catch (e) {
       const message = e instanceof ApiError
         ? `Reports failed (${e.status}): ${e.message || 'Check API is running and you are signed in as Owner or Team Admin.'}`

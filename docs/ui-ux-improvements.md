@@ -2,6 +2,8 @@
 
 > A comprehensive task list to transform the Codex Ticketing System into an enterprise-grade, user-friendly application.
 
+**Status (updated 2026-02-05):** Phase 1 complete. Phase 2 tasks 2.1–2.5 complete; 2.6 (Related/Linked Tickets) pending. Phase 3 tasks 3.1 (Custom Fields) and 3.2 (Reporting) complete; 3.3 (Automation Rules) and 3.4 (Audit Log page) pending. Phase 4 (Polish & Accessibility) pending.
+
 ---
 
 ## Table of Contents
@@ -80,12 +82,12 @@ Response: {
 
 #### Acceptance Criteria
 
-- [ ] Cmd/Ctrl + K opens the command palette from any page
-- [ ] Users can search and navigate to tickets by ID or subject
-- [ ] Users can search and view user profiles
-- [ ] Recent searches are persisted in localStorage
-- [ ] Results are categorized and keyboard-navigable
-- [ ] Search is debounced and shows loading state
+- [x] Cmd/Ctrl + K opens the command palette from any page
+- [x] Users can search and navigate to tickets by ID or subject
+- [x] Users can search and view user profiles
+- [x] Recent searches are persisted in localStorage
+- [x] Results are categorized and keyboard-navigable
+- [x] Search is debounced and shows loading state
 
 ---
 
@@ -179,14 +181,14 @@ PATCH /api/notifications/read-all
 
 #### Acceptance Criteria
 
-- [ ] Bell icon visible in TopBar with unread count badge
-- [ ] Clicking bell opens notification dropdown
-- [ ] Notifications are fetched on page load
-- [ ] Click notification navigates to relevant ticket
-- [ ] Mark individual notification as read
-- [ ] Mark all notifications as read
-- [ ] Notifications refresh every 30 seconds (polling)
-- [ ] Empty state shown when no notifications
+- [x] Bell icon visible in TopBar with unread count badge
+- [x] Clicking bell opens notification dropdown
+- [x] Notifications are fetched on page load
+- [x] Click notification navigates to relevant ticket
+- [x] Mark individual notification as read
+- [x] Mark all notifications as read
+- [x] Notifications refresh every 30 seconds (polling)
+- [x] Empty state shown when no notifications
 
 ---
 
@@ -257,15 +259,15 @@ Body: { ticketIds: string[], priority: string }
 
 #### Acceptance Criteria
 
-- [ ] Checkboxes appear on ticket list items
-- [ ] Select all checkbox selects visible tickets
-- [ ] Bulk toolbar appears when tickets selected
-- [ ] Bulk assign works and refreshes list
-- [ ] Bulk status change works with valid transitions only
-- [ ] Bulk transfer works
-- [ ] Confirmation dialog shown before action
-- [ ] Clear selection button works
-- [ ] Toast shown on success/error
+- [x] Checkboxes appear on ticket list items
+- [x] Select all checkbox selects visible tickets
+- [x] Bulk toolbar appears when tickets selected
+- [x] Bulk assign works and refreshes list
+- [x] Bulk status change works with valid transitions only
+- [x] Bulk transfer works
+- [x] Confirmation dialog shown before action
+- [x] Clear selection button works
+- [x] Toast shown on success/error
 
 ---
 
@@ -322,13 +324,13 @@ apps/web/src/pages/TicketDetailPage.tsx (add detail shortcuts)
 
 #### Acceptance Criteria
 
-- [ ] Cmd/Ctrl + K opens command palette
-- [ ] Cmd/Ctrl + N opens new ticket modal
-- [ ] J/K navigates ticket list with visual focus indicator
-- [ ] Enter opens focused ticket
-- [ ] `?` shows help modal with all shortcuts
-- [ ] Shortcuts don't fire when typing in input/textarea
-- [ ] Shortcuts are context-aware (different on list vs detail)
+- [x] Cmd/Ctrl + K opens command palette
+- [x] Cmd/Ctrl + N opens new ticket modal
+- [x] J/K navigates ticket list with visual focus indicator
+- [x] Enter opens focused ticket
+- [x] `?` shows help modal with all shortcuts
+- [x] Shortcuts don't fire when typing in input/textarea
+- [x] Shortcuts are context-aware (different on list vs detail)
 
 ---
 
@@ -380,11 +382,11 @@ Response: {
 
 #### Acceptance Criteria
 
-- [ ] Badge shows next to "Assigned to Me" with correct count
-- [ ] Badge shows next to "Triage Board" with NEW ticket count
-- [ ] Badges update when tickets change
-- [ ] Badge hidden when count is 0
-- [ ] Works in both expanded and collapsed sidebar states
+- [x] Badge shows next to "Assigned to Me" with correct count
+- [x] Badge shows next to "Triage Board" with NEW ticket count
+- [x] Badges update when tickets change
+- [x] Badge hidden when count is 0
+- [x] Works in both expanded and collapsed sidebar states
 
 ---
 
@@ -419,10 +421,10 @@ apps/web/src/utils/clipboard.ts (new - clipboard helper)
 
 #### Acceptance Criteria
 
-- [ ] Copy link button visible on ticket detail page
-- [ ] Clicking copies the full ticket URL
-- [ ] Toast notification confirms copy
-- [ ] Button shows visual feedback (checkmark or animation)
+- [x] Copy link button visible on ticket detail page
+- [x] Clicking copies the full ticket URL
+- [x] Toast notification confirms copy
+- [x] Button shows visual feedback (checkmark or animation)
 
 ---
 
@@ -460,10 +462,10 @@ apps/web/src/pages/*.tsx (replace formatDate calls with RelativeTime component)
 
 #### Acceptance Criteria
 
-- [ ] Timestamps show relative format
-- [ ] Hover shows absolute date/time tooltip
-- [ ] Format is user-friendly and consistent
-- [ ] Times update automatically without refresh
+- [x] Timestamps show relative format
+- [x] Hover shows absolute date/time tooltip
+- [x] Format is user-friendly and consistent
+- [x] Times update automatically without refresh
 
 ---
 
@@ -564,15 +566,15 @@ model SavedView {
 
 #### Acceptance Criteria
 
-- [ ] Filter panel is collapsible/expandable
-- [ ] Multi-select works for status, priority, team
-- [ ] Date range picker works for created/due dates
-- [ ] Active filters shown as pills/tags
-- [ ] Clear all filters button works
-- [ ] Filters persist in URL
-- [ ] Can save current filters as named view
-- [ ] Can load saved views
-- [ ] API supports all filter parameters
+- [x] Filter panel is collapsible/expandable
+- [x] Multi-select works for status, priority, team
+- [x] Date range picker works for created/due dates
+- [x] Active filters shown as pills/tags
+- [x] Clear all filters button works
+- [x] Filters persist in URL
+- [x] Can save current filters as named view
+- [x] Can load saved views
+- [x] API supports all filter parameters
 
 ---
 
@@ -627,14 +629,14 @@ apps/web/src/pages/TicketsPage.tsx (add view toggle and table)
 
 #### Acceptance Criteria
 
-- [ ] Toggle switches between card and table view
-- [ ] Table shows all relevant ticket data
-- [ ] Columns are sortable
-- [ ] Column widths are adjustable
-- [ ] View preference persists across sessions
-- [ ] Click row opens ticket detail
-- [ ] Checkboxes work for bulk selection
-- [ ] SLA status column shows colored badges
+- [x] Toggle switches between card and table view
+- [x] Table shows all relevant ticket data
+- [x] Columns are sortable
+- [x] Column widths are adjustable
+- [x] View preference persists across sessions
+- [x] Click row opens ticket detail
+- [x] Checkboxes work for bulk selection
+- [x] SLA status column shows colored badges
 
 ---
 
@@ -701,12 +703,12 @@ model CannedResponse {
 
 #### Acceptance Criteria
 
-- [ ] Editor supports basic formatting (bold, italic, lists)
-- [ ] @mentions trigger user autocomplete
-- [ ] Mentioned users are notified
-- [ ] Canned responses can be inserted
-- [ ] Message renders with formatting in conversation
-- [ ] Works on both public replies and internal notes
+- [x] Editor supports basic formatting (bold, italic, lists)
+- [x] @mentions trigger user autocomplete
+- [x] Mentioned users are notified
+- [x] Canned responses can be inserted
+- [x] Message renders with formatting in conversation
+- [x] Works on both public replies and internal notes
 
 ---
 
@@ -755,13 +757,13 @@ apps/web/src/pages/TicketDetailPage.tsx (add timer widget)
 
 #### Acceptance Criteria
 
-- [ ] Timer counts down in real-time
-- [ ] Color changes based on remaining time percentage
-- [ ] Progress bar reflects time remaining
-- [ ] Shows "Paused" state correctly
-- [ ] Shows "Breached" state when overdue
-- [ ] Tooltip shows exact due date/time
-- [ ] Works for both first response and resolution SLAs
+- [x] Timer counts down in real-time
+- [x] Color changes based on remaining time percentage
+- [x] Progress bar reflects time remaining
+- [x] Shows "Paused" state correctly
+- [x] Shows "Breached" state when overdue
+- [x] Tooltip shows exact due date/time
+- [x] Works for both first response and resolution SLAs
 
 ---
 
@@ -821,12 +823,12 @@ apps/web/src/pages/TicketDetailPage.tsx (add timeline toggle)
 
 #### Acceptance Criteria
 
-- [ ] Toggle between Conversation and Timeline views
-- [ ] Timeline shows all event types
-- [ ] Events are chronologically ordered
-- [ ] Each event shows actor, action, and timestamp
-- [ ] Visual distinction between event types
-- [ ] Messages show inline in timeline view
+- [x] Toggle between Conversation and Timeline views
+- [x] Timeline shows all event types
+- [x] Events are chronologically ordered
+- [x] Each event shows actor, action, and timestamp
+- [x] Visual distinction between event types
+- [x] Messages show inline in timeline view
 
 ---
 
@@ -1007,14 +1009,14 @@ model CustomFieldValue {
 
 #### Acceptance Criteria
 
-- [ ] Admin can create custom fields
-- [ ] Admin can configure field type and options
-- [ ] Admin can set required/optional
-- [ ] Custom fields appear on ticket creation form
-- [ ] Custom fields appear on ticket detail page
-- [ ] Custom field values are saved and retrieved
-- [ ] Can filter tickets by custom field values
-- [ ] Custom fields included in CSV export
+- [x] Admin can create custom fields
+- [x] Admin can configure field type and options
+- [x] Admin can set required/optional
+- [x] Custom fields appear on ticket creation form
+- [x] Custom fields appear on ticket detail page
+- [x] Custom field values are saved and retrieved
+- [x] Can filter tickets by custom field values
+- [x] Custom fields included in CSV export
 
 ---
 
@@ -1096,14 +1098,14 @@ GET /api/reports/agent-performance?from=...&to=...&teamId=xxx
 
 #### Acceptance Criteria
 
-- [ ] Reports page shows all chart types
-- [ ] Date range filter works
-- [ ] Team filter works
-- [ ] Charts render with correct data
-- [ ] Agent scorecard shows per-agent metrics
-- [ ] Export to CSV works
+- [x] Reports page shows all chart types
+- [x] Date range filter works
+- [x] Team filter works
+- [x] Charts render with correct data
+- [x] Agent scorecard shows per-agent metrics
+- [x] Export to CSV works
 - [ ] Export to PDF works (stretch goal)
-- [ ] Charts are responsive
+- [x] Charts are responsive
 
 ---
 
@@ -1599,4 +1601,4 @@ Task 3.3 (Automation) → Can build on existing routing rules
 ---
 
 *Document created: January 29, 2026*  
-*Last updated: January 29, 2026*
+*Last updated: February 5, 2026 — Phase 1 and completed Phase 2/3 tasks marked done.*

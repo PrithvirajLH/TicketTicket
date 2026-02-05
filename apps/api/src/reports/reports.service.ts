@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { Prisma, TicketPriority, UserRole } from '@prisma/client';
+import { Prisma, TicketPriority, TicketStatus, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -18,6 +18,12 @@ export class ReportsService {
         throw new ForbiddenException('Team administrator must have a primary team set');
       }
       return { ...query, teamId: user.primaryTeamId };
+    }
+    if (user.role === UserRole.LEAD) {
+      if (!user.teamId) {
+        throw new ForbiddenException('Lead must belong to a team');
+      }
+      return { ...query, teamId: user.teamId };
     }
     return query;
   }
@@ -38,13 +44,21 @@ export class ReportsService {
     query: ReportQueryDto,
     fromDate: Date,
     toEndExclusive: Date,
+    user?: AuthUser,
   ): Prisma.TicketWhereInput {
+    const dateField = query.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const where: Prisma.TicketWhereInput = {
-      createdAt: { gte: fromDate, lt: toEndExclusive },
+      [dateField]: { gte: fromDate, lt: toEndExclusive },
     };
     if (query.teamId) where.assignedTeamId = query.teamId;
     if (query.priority) where.priority = query.priority;
     if (query.categoryId) where.categoryId = query.categoryId;
+    if (query.scope === 'assigned' && user) where.assigneeId = user.id;
+    if (query.statusGroup === 'open') {
+      where.status = { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] };
+    } else if (query.statusGroup === 'resolved') {
+      where.status = { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] };
+    }
     return where;
   }
 
@@ -66,11 +80,13 @@ export class ReportsService {
     priority?: TicketPriority,
     categoryId?: string,
     tableAlias?: string,
+    dateField: 'createdAt' | 'updatedAt' = 'createdAt',
   ): Prisma.Sql[] {
     const pre = tableAlias ? `${tableAlias}."` : '"';
+    const dateCol = `${pre}${dateField}"`;
     const conditions: Prisma.Sql[] = [
-      Prisma.sql`${Prisma.raw(pre + 'createdAt"')} >= ${fromDate}`,
-      Prisma.sql`${Prisma.raw(pre + 'createdAt"')} < ${toEndExclusive}`,
+      Prisma.sql`${Prisma.raw(dateCol)} >= ${fromDate}`,
+      Prisma.sql`${Prisma.raw(dateCol)} < ${toEndExclusive}`,
     ];
     if (teamId) conditions.push(Prisma.sql`${Prisma.raw(pre + 'assignedTeamId"')} = ${teamId}`);
     if (priority) conditions.push(Prisma.sql`${Prisma.raw(pre + 'priority"')} = ${priority}`);
@@ -78,21 +94,67 @@ export class ReportsService {
     return conditions;
   }
 
+  async getSummary(query: ReportQueryDto, user: AuthUser) {
+    // Note: keep the response "shaped" for the frontend so it can hydrate multiple charts with one request.
+    const resolutionQuery: ResolutionTimeQueryDto = {
+      ...query,
+      groupBy: 'team',
+    };
+
+    const [
+      ticketVolume,
+      slaCompliance,
+      resolutionTime,
+      ticketsByPriority,
+      ticketsByStatus,
+      agentPerformance,
+    ] = await Promise.all([
+      this.getTicketVolume(query, user),
+      this.getSlaCompliance(query, user),
+      this.getResolutionTime(resolutionQuery, user),
+      this.getTicketsByPriority(query, user),
+      this.getTicketsByStatus(query, user),
+      this.getAgentPerformance(query, user),
+    ]);
+
+    return {
+      ticketVolume,
+      slaCompliance,
+      resolutionTime,
+      ticketsByPriority,
+      ticketsByStatus,
+      agentPerformance,
+    };
+  }
+
   async getTicketVolume(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      undefined,
+      dateField,
     );
+    const statusText = Prisma.raw('"status"::text');
+    if (scoped.statusGroup === 'open') {
+      conditions.push(
+        Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`${statusText} IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
     const rows = await this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
       SELECT d::date as date, coalesce(c.cnt, 0)::bigint as count
       FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
       LEFT JOIN (
-        SELECT date_trunc('day', "createdAt")::date as day, count(*)::bigint as cnt
+        SELECT date_trunc('day', ${Prisma.raw(`"${dateField}"`)})::date as day, count(*)::bigint as cnt
         FROM "Ticket"
         WHERE ${Prisma.join(conditions, ' AND ')}
         GROUP BY 1
@@ -110,12 +172,15 @@ export class ReportsService {
   async getSlaCompliance(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      undefined,
+      dateField,
     );
     conditions.push(Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`);
     const row = await this.prisma.$queryRaw<
@@ -162,12 +227,15 @@ export class ReportsService {
   async getResolutionTime(query: ResolutionTimeQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      undefined,
+      dateField,
     );
     conditions.push(Prisma.sql`"resolvedAt" IS NOT NULL`);
     const groupBy = query.groupBy === 'priority' ? 'priority' : 'team';
@@ -219,7 +287,7 @@ export class ReportsService {
   async getTicketsByStatus(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
-    const where = this.reportWhere(scoped, fromDate, toEndExclusive);
+    const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
     const groups = await this.prisma.ticket.groupBy({
       by: ['status'],
       where,
@@ -237,7 +305,7 @@ export class ReportsService {
   async getTicketsByPriority(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
-    const where = this.reportWhere(scoped, fromDate, toEndExclusive);
+    const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
     const groups = await this.prisma.ticket.groupBy({
       by: ['priority'],
       where,
@@ -255,6 +323,7 @@ export class ReportsService {
   async getAgentPerformance(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
@@ -262,6 +331,7 @@ export class ReportsService {
       scoped.priority,
       scoped.categoryId,
       't',
+      dateField,
     );
     conditions.push(Prisma.sql`t."assigneeId" IS NOT NULL`);
     const rows = await this.prisma.$queryRaw<
@@ -306,6 +376,174 @@ export class ReportsService {
                 (r.total_first_response_sec / 3600 / Number(r.first_responses)) * 10,
               ) / 10
             : null,
+      })),
+    };
+  }
+
+  async getAgentWorkload(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const statusText = Prisma.raw('t."status"::text');
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`t."assigneeId" IS NOT NULL`,
+      Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+    ];
+
+    if (scoped.teamId) {
+      conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
+    }
+    if (scoped.priority) {
+      conditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+    }
+    if (scoped.categoryId) {
+      conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        user_id: string;
+        display_name: string | null;
+        email: string;
+        assigned_open: bigint;
+        in_progress: bigint;
+      }[]
+    >`
+      SELECT
+        t."assigneeId" as user_id,
+        u."displayName" as display_name,
+        u."email" as email,
+        count(*)::bigint as assigned_open,
+        count(*) FILTER (WHERE ${statusText} = ${TicketStatus.IN_PROGRESS})::bigint as in_progress
+      FROM "Ticket" t
+      INNER JOIN "User" u ON u.id = t."assigneeId"
+      WHERE ${Prisma.join(conditions, ' AND ')}
+      GROUP BY t."assigneeId", u."displayName", u."email"
+      ORDER BY assigned_open DESC, u."displayName" ASC
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        userId: row.user_id,
+        name: row.display_name ?? row.email ?? 'Unknown',
+        email: row.email,
+        assignedOpen: Number(row.assigned_open),
+        inProgress: Number(row.in_progress),
+      })),
+    };
+  }
+
+  async getTicketsByAge(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const statusText = Prisma.raw('t."status"::text');
+    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateColumn = Prisma.raw(`t."${dateField}"`);
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`${dateColumn} >= ${fromDate}`,
+      Prisma.sql`${dateColumn} < ${toEndExclusive}`,
+      Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+    ];
+    if (scoped.teamId) {
+      conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
+    }
+    if (scoped.priority) {
+      conditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+    }
+    if (scoped.categoryId) {
+      conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      { bucket: string; count: bigint }[]
+    >`
+      SELECT bucket, count(*)::bigint as count
+      FROM (
+        SELECT
+          CASE
+            WHEN age_hours < 1 THEN '0-1 hr'
+            WHEN age_hours < 4 THEN '1-4 hrs'
+            WHEN age_hours < 8 THEN '4-8 hrs'
+            WHEN age_hours < 24 THEN '8-24 hrs'
+            ELSE '24+ hrs'
+          END as bucket
+        FROM (
+          SELECT EXTRACT(epoch FROM (now() - t."createdAt"))/3600 as age_hours
+          FROM "Ticket" t
+          WHERE ${Prisma.join(conditions, ' AND ')}
+        ) ages
+      ) buckets
+      GROUP BY bucket
+    `;
+
+    const order = ['0-1 hr', '1-4 hrs', '4-8 hrs', '8-24 hrs', '24+ hrs'];
+    const sorted = order.map((bucket) => ({
+      bucket,
+      count: Number(rows.find((row) => row.bucket === bucket)?.count ?? 0),
+    }));
+
+    return { data: sorted };
+  }
+
+  async getReopenRate(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`e."type" = 'TICKET_STATUS_CHANGED'`,
+      Prisma.sql`e."payload"->>'to' = 'REOPENED'`,
+      Prisma.sql`e."createdAt" >= ${fromDate}`,
+      Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+    ];
+    if (scoped.teamId) {
+      conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      { date: Date; count: bigint }[]
+    >`
+      SELECT d::date as date, coalesce(r.cnt, 0)::bigint as count
+      FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
+      LEFT JOIN (
+        SELECT date_trunc('day', e."createdAt")::date as day, count(*)::bigint as cnt
+        FROM "TicketEvent" e
+        INNER JOIN "Ticket" t ON t.id = e."ticketId"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+        GROUP BY 1
+      ) r ON r.day = d::date
+      ORDER BY 1
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+        count: Number(row.count),
+      })),
+    };
+  }
+
+  async getTicketsByCategory(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
+    const groups = await this.prisma.ticket.groupBy({
+      by: ['categoryId'],
+      where,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    });
+
+    const categoryIds = groups
+      .map((g) => g.categoryId)
+      .filter((id): id is string => Boolean(id));
+    const categories = await this.prisma.category.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true, name: true },
+    });
+    const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
+
+    return {
+      data: groups.map((g) => ({
+        id: g.categoryId ?? 'uncategorized',
+        name: g.categoryId ? categoryMap.get(g.categoryId) ?? 'Uncategorized' : 'Uncategorized',
+        count: g._count.id,
       })),
     };
   }

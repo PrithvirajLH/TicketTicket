@@ -156,6 +156,11 @@ export type TicketActivityPoint = {
   resolved: number;
 };
 
+export type TicketStatusPoint = {
+  status: string;
+  count: number;
+};
+
 export type CreateTicketPayload = {
   subject: string;
   description: string;
@@ -247,7 +252,19 @@ export function fetchTickets(params?: Record<string, string | number | undefined
 }
 
 export function fetchTicketCounts() {
-  return apiFetch<{ assignedToMe: number; triage: number; open: number }>('/tickets/counts');
+  return apiFetch<{ assignedToMe: number; triage: number; open: number; unassigned: number }>('/tickets/counts');
+}
+
+export type TicketMetricsResponse = {
+  total: number;
+  open: number;
+  resolved: number;
+  byPriority: { P1: number; P2: number; P3: number; P4: number };
+  byTeam: Array<{ teamId: string | null; total: number }>;
+};
+
+export function fetchTicketMetrics() {
+  return apiFetch<TicketMetricsResponse>('/tickets/metrics');
 }
 
 export function fetchTicketActivity(params?: { from?: string; to?: string; scope?: 'assigned' }) {
@@ -257,6 +274,21 @@ export function fetchTicketActivity(params?: { from?: string; to?: string; scope
   if (params?.scope) query.set('scope', params.scope);
   const suffix = query.toString() ? `?${query.toString()}` : '';
   return apiFetch<{ data: TicketActivityPoint[] }>(`/tickets/activity${suffix}`);
+}
+
+export function fetchTicketStatusBreakdown(params?: {
+  from?: string;
+  to?: string;
+  scope?: 'assigned';
+  dateField?: 'createdAt' | 'updatedAt';
+}) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set('from', params.from);
+  if (params?.to) query.set('to', params.to);
+  if (params?.scope) query.set('scope', params.scope);
+  if (params?.dateField) query.set('dateField', params.dateField);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{ data: TicketStatusPoint[] }>(`/tickets/status-breakdown${suffix}`);
 }
 
 export type SavedViewRecord = {
@@ -843,6 +875,9 @@ export type ReportQuery = {
   priority?: string;
   categoryId?: string;
   groupBy?: 'team' | 'priority';
+  scope?: 'assigned';
+  dateField?: 'createdAt' | 'updatedAt';
+  statusGroup?: 'open' | 'resolved' | 'all';
 };
 
 export type TicketVolumeResponse = { data: { date: string; count: number }[] };
@@ -873,6 +908,33 @@ export type AgentPerformanceResponse = {
     avgFirstResponseHours: number | null;
   }[];
 };
+export type AgentWorkloadResponse = {
+  data: {
+    userId: string;
+    name: string;
+    email: string;
+    assignedOpen: number;
+    inProgress: number;
+  }[];
+};
+export type TicketAgeBucketResponse = {
+  data: { bucket: string; count: number }[];
+};
+export type ReopenRateResponse = {
+  data: { date: string; count: number }[];
+};
+export type TicketsByCategoryResponse = {
+  data: { id: string; name: string; count: number }[];
+};
+
+export type ReportSummaryResponse = {
+  ticketVolume: TicketVolumeResponse;
+  slaCompliance: SlaComplianceResponse;
+  resolutionTime: ResolutionTimeResponse;
+  ticketsByPriority: TicketsByPriorityResponse;
+  ticketsByStatus: TicketsByStatusResponse;
+  agentPerformance: AgentPerformanceResponse;
+};
 
 function reportQueryString(params: ReportQuery): string {
   const q = new URLSearchParams();
@@ -885,6 +947,10 @@ function reportQueryString(params: ReportQuery): string {
 
 export function fetchReportTicketVolume(params: ReportQuery) {
   return apiFetch<TicketVolumeResponse>(`/reports/ticket-volume${reportQueryString(params)}`);
+}
+export function fetchReportSummary(params: ReportQuery) {
+  // Server defaults resolutionTime.groupBy to "team" for the summary response.
+  return apiFetch<ReportSummaryResponse>(`/reports/summary${reportQueryString(params)}`);
 }
 export function fetchReportSlaCompliance(params: ReportQuery) {
   return apiFetch<SlaComplianceResponse>(`/reports/sla-compliance${reportQueryString(params)}`);
@@ -900,4 +966,16 @@ export function fetchReportTicketsByPriority(params: ReportQuery) {
 }
 export function fetchReportAgentPerformance(params: ReportQuery) {
   return apiFetch<AgentPerformanceResponse>(`/reports/agent-performance${reportQueryString(params)}`);
+}
+export function fetchReportAgentWorkload(params: ReportQuery) {
+  return apiFetch<AgentWorkloadResponse>(`/reports/agent-workload${reportQueryString(params)}`);
+}
+export function fetchReportTicketsByAge(params: ReportQuery) {
+  return apiFetch<TicketAgeBucketResponse>(`/reports/tickets-by-age${reportQueryString(params)}`);
+}
+export function fetchReportReopenRate(params: ReportQuery) {
+  return apiFetch<ReopenRateResponse>(`/reports/reopen-rate${reportQueryString(params)}`);
+}
+export function fetchReportTicketsByCategory(params: ReportQuery) {
+  return apiFetch<TicketsByCategoryResponse>(`/reports/tickets-by-category${reportQueryString(params)}`);
 }

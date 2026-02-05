@@ -22,6 +22,7 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
+import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { TicketsService } from './tickets.service';
@@ -43,6 +44,16 @@ export class TicketsController {
   @Get('activity')
   async getActivity(@Query() query: TicketActivityDto, @CurrentUser() user: AuthUser) {
     return this.ticketsService.getActivity(query, user);
+  }
+
+  @Get('status-breakdown')
+  async getStatusBreakdown(@Query() query: TicketStatusDto, @CurrentUser() user: AuthUser) {
+    return this.ticketsService.getStatusBreakdown(query, user);
+  }
+
+  @Get('metrics')
+  async getMetrics(@CurrentUser() user: AuthUser) {
+    return this.ticketsService.getMetrics(user);
   }
 
   @Get(':id')

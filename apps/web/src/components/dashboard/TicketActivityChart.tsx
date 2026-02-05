@@ -15,6 +15,43 @@ export type ActivityPoint = {
   resolved: number;
 };
 
+function ActivityTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: ActivityPoint }>;
+}) {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+  const point = payload[0]?.payload;
+  if (!point) {
+    return null;
+  }
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-[11px] shadow-card">
+      <div className="text-xs font-semibold text-slate-700">{point.date}</div>
+      <div className="mt-2 space-y-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-slate-600">
+            <span className="h-2 w-2 rounded-full bg-[hsl(var(--status-progress))]" />
+            Open
+          </span>
+          <span className="font-semibold text-slate-800">{point.open ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-slate-600">
+            <span className="h-2 w-2 rounded-full bg-[hsl(var(--status-resolved))]" />
+            Resolved
+          </span>
+          <span className="font-semibold text-slate-800">{point.resolved ?? 0}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
   if (data.length === 0) {
     return (
@@ -51,17 +88,7 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
             allowDecimals={false}
             tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
           />
-          <Tooltip
-            labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
-            formatter={(value: number) => [value, 'Tickets']}
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '12px',
-              boxShadow: 'var(--shadow-card)',
-              fontSize: 12,
-            }}
-          />
+          <Tooltip content={<ActivityTooltip />} />
           <Area
             type="monotone"
             dataKey="open"

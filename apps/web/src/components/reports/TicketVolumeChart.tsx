@@ -23,7 +23,7 @@ export function TicketVolumeChart({ data }: { data: Point[] }) {
           <XAxis dataKey="short" tick={{ fontSize: 11 }} stroke="#64748b" />
           <YAxis tick={{ fontSize: 11 }} stroke="#64748b" allowDecimals={false} />
           <Tooltip
-            formatter={(value: number) => [value, 'Tickets']}
+            formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
             labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ''}
             contentStyle={{ fontSize: 12 }}
           />

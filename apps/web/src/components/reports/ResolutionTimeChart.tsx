@@ -38,11 +38,11 @@ export function ResolutionTimeChart({ data }: { data: Point[] }) {
           <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#64748b" />
           <YAxis tick={{ fontSize: 11 }} stroke="#64748b" unit="h" />
           <Tooltip
-            formatter={(value: number) => [value, 'Avg hours']}
+            formatter={(value: number | undefined) => [value ?? 0, 'Avg hours']}
             contentStyle={{ fontSize: 12 }}
           />
           <Bar dataKey="avgHours" name="Avg resolution (h)" radius={[4, 4, 0, 0]}>
-            {data.map((entry, index) => (
+            {data.map((_, index) => (
               <Cell key={index} fill={DEPARTMENT_COLORS[index % DEPARTMENT_COLORS.length]} />
             ))}
           </Bar>

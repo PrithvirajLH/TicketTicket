@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMinuteTick } from '../hooks/useMinuteTick';
 import { formatDateLong, formatRelative } from '../utils/format';
 
 type RelativeTimeProps = {
@@ -43,13 +43,7 @@ function formatRelativeCompact(value: string | Date): string {
 }
 
 export function RelativeTime({ value, className, variant = 'default' }: RelativeTimeProps) {
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    if (value == null) return;
-    const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
-    return () => window.clearInterval(id);
-  }, [value]);
+  useMinuteTick(value != null);
 
   if (value == null) {
     return <span className={className}>—</span>;

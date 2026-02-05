@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchTickets, type TeamRef } from '../api/client';
+import { fetchTicketMetrics, type TeamRef } from '../api/client';
 import { formatStatus, statusBadgeClass } from '../utils/format';
 
 type MetricSnapshot = {
@@ -35,46 +35,30 @@ export function ManagerViewsPage({
     loadMetrics();
   }, [refreshKey, teamsList]);
 
-  async function fetchCount(params: Record<string, string | number | undefined>) {
-    const response = await fetchTickets({
-      pageSize: 1,
-      ...params
-    });
-    return response.meta.total;
-  }
-
   async function loadMetrics() {
     setLoading(true);
     setError(null);
     try {
-      const totalPromise = fetchCount({});
-      const openPromise = fetchCount({ statusGroup: 'open' });
-      const resolvedPromise = fetchCount({ statusGroup: 'resolved' });
-      const priorityPromises = PRIORITIES.map((priority) => fetchCount({ priority }));
-      const teamPromises = teamsList.map((team) => fetchCount({ teamId: team.id }));
-
-      const [total, open, resolved, ...rest] = await Promise.all([
-        totalPromise,
-        openPromise,
-        resolvedPromise,
-        ...priorityPromises,
-        ...teamPromises
-      ]);
+      const res = await fetchTicketMetrics();
 
       const priorityCounts: Record<string, number> = {};
-      PRIORITIES.forEach((priority, index) => {
-        priorityCounts[priority] = rest[index] ?? 0;
+      PRIORITIES.forEach((priority) => {
+        priorityCounts[priority] = res.byPriority[priority as keyof typeof res.byPriority] ?? 0;
       });
 
-      const teamCounts = teamsList.map((team, index) => ({
+      const teamTotals = new Map<string, number>();
+      for (const row of res.byTeam) {
+        if (row.teamId) teamTotals.set(row.teamId, row.total);
+      }
+      const teamCounts = teamsList.map((team) => ({
         team,
-        total: rest[PRIORITIES.length + index] ?? 0
+        total: teamTotals.get(team.id) ?? 0
       }));
 
       setMetrics({
-        total,
-        open,
-        resolved,
+        total: res.total,
+        open: res.open,
+        resolved: res.resolved,
         priorities: priorityCounts,
         teams: teamCounts
       });
