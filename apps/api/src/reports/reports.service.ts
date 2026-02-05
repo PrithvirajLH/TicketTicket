@@ -547,4 +547,113 @@ export class ReportsService {
       })),
     };
   }
+
+  async getTeamSummary(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateColumn = Prisma.raw(`t."${dateField}"`);
+    const statusText = Prisma.raw('t."status"::text');
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`${dateColumn} >= ${fromDate}`,
+      Prisma.sql`${dateColumn} < ${toEndExclusive}`,
+    ];
+    if (scoped.teamId) {
+      conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
+    }
+    if (scoped.priority) {
+      conditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+    }
+    if (scoped.categoryId) {
+      conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+    if (scoped.scope === 'assigned') {
+      conditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      { team_id: string | null; open_count: bigint; resolved_count: bigint; total_count: bigint }[]
+    >`
+      SELECT
+        t."assignedTeamId" as team_id,
+        count(*) FILTER (WHERE ${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])}))::bigint as open_count,
+        count(*) FILTER (WHERE ${statusText} IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])}))::bigint as resolved_count,
+        count(*)::bigint as total_count
+      FROM "Ticket" t
+      WHERE ${Prisma.join(conditions, ' AND ')}
+      GROUP BY t."assignedTeamId"
+      ORDER BY total_count DESC
+    `;
+
+    const teamIds = rows
+      .map((row) => row.team_id)
+      .filter((id): id is string => Boolean(id));
+    const teams = await this.prisma.team.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, name: true },
+    });
+    const teamMap = new Map(teams.map((t) => [t.id, t.name]));
+
+    return {
+      data: rows.map((row) => ({
+        id: row.team_id ?? 'unassigned',
+        name: row.team_id ? teamMap.get(row.team_id) ?? 'Unknown team' : 'Unassigned',
+        open: Number(row.open_count),
+        resolved: Number(row.resolved_count),
+        total: Number(row.total_count),
+      })),
+    };
+  }
+
+  async getTransfers(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
+    const eventConditions: Prisma.Sql[] = [
+      Prisma.sql`e."type" = 'TICKET_TRANSFERRED'`,
+      Prisma.sql`e."createdAt" >= ${fromDate}`,
+      Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+    ];
+    const ticketConditions: Prisma.Sql[] = [];
+    if (scoped.teamId) {
+      eventConditions.push(
+        Prisma.sql`(e.payload->>'fromTeamId' = ${scoped.teamId} OR e.payload->>'toTeamId' = ${scoped.teamId})`,
+      );
+    }
+    if (scoped.priority) {
+      ticketConditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+    }
+    if (scoped.categoryId) {
+      ticketConditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+    if (scoped.scope === 'assigned') {
+      ticketConditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      { date: Date; count: bigint }[]
+    >`
+      SELECT d::date as date, coalesce(tr.cnt, 0)::bigint as count
+      FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
+      LEFT JOIN (
+        SELECT date_trunc('day', e."createdAt")::date as day, count(*)::bigint as cnt
+        FROM "TicketEvent" e
+        INNER JOIN "Ticket" t ON t.id = e."ticketId"
+        WHERE ${Prisma.join(eventConditions, ' AND ')}
+        ${ticketConditions.length ? Prisma.sql`AND ${Prisma.join(ticketConditions, ' AND ')}` : Prisma.empty}
+        GROUP BY 1
+      ) tr ON tr.day = d::date
+      ORDER BY 1
+    `;
+
+    const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    return {
+      data: {
+        total,
+        series: rows.map((row) => ({
+          date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+          count: Number(row.count),
+        })),
+      },
+    };
+  }
 }

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Clock, GitMerge, Layers, ListChecks } from 'lucide-react';
+import { Clock, GitMerge, Layers, ListChecks, Zap } from 'lucide-react';
 import type { Role } from '../types';
 
 const adminCards: { title: string; description: string; href: string; icon: typeof Clock; roles: Role[] }[] = [
@@ -15,6 +15,13 @@ const adminCards: { title: string; description: string; href: string; icon: type
     description: 'Control keyword-based auto-routing for new tickets.',
     href: '/routing',
     icon: GitMerge,
+    roles: ['TEAM_ADMIN', 'OWNER']
+  },
+  {
+    title: 'Automation Rules',
+    description: 'Run actions when tickets are created, status changes, or SLA is at risk.',
+    href: '/automation',
+    icon: Zap,
     roles: ['TEAM_ADMIN', 'OWNER']
   },
   {

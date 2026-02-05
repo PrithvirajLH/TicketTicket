@@ -83,7 +83,7 @@ export function AgentWorkloadChart({ data }: { data: AgentWorkloadResponse['data
 
   return (
     <div className="w-full">
-      <div className="h-[240px] w-full">
+      <div className="h-[240px] w-full min-h-0 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />

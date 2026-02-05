@@ -37,6 +37,7 @@ import { ManagerViewsPage } from './pages/ManagerViewsPage';
 import { SlaSettingsPage } from './pages/SlaSettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AdminPage } from './pages/AdminPage';
+import { AutomationRulesPage } from './pages/AutomationRulesPage';
 import { RoutingRulesPage } from './pages/RoutingRulesPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { CustomFieldsAdminPage } from './pages/CustomFieldsAdminPage';
@@ -118,7 +119,7 @@ function deriveNavKey(
   if (pathname.startsWith('/sla-settings')) {
     return 'sla-settings';
   }
-  if (pathname.startsWith('/routing') || pathname.startsWith('/categories') || pathname.startsWith('/custom-fields')) {
+  if (pathname.startsWith('/routing') || pathname.startsWith('/automation') || pathname.startsWith('/categories') || pathname.startsWith('/custom-fields')) {
     return 'admin';
   }
   if (pathname.startsWith('/reports')) {
@@ -446,6 +447,8 @@ function App() {
 
   const viewTitleOverride = location.pathname.startsWith('/routing')
     ? 'Routing Rules'
+    : location.pathname.startsWith('/automation')
+    ? 'Automation Rules'
     : location.pathname.startsWith('/categories')
     ? 'Categories'
     : location.pathname.startsWith('/custom-fields')
@@ -453,6 +456,8 @@ function App() {
     : undefined;
   const viewSubtitleOverride = location.pathname.startsWith('/routing')
     ? 'Manage keyword-based routing logic.'
+    : location.pathname.startsWith('/automation')
+    ? 'Run actions when tickets are created, status changes, or SLA is at risk.'
     : location.pathname.startsWith('/categories')
     ? 'Organize ticket categories and subcategories.'
     : location.pathname.startsWith('/custom-fields')
@@ -600,6 +605,16 @@ function App() {
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
                   <RoutingRulesPage teamsList={teamsList} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
+              path="/automation"
+              element={
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
+                  <AutomationRulesPage role={currentPersona.role} />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )

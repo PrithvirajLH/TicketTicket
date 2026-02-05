@@ -20,6 +20,7 @@ import type { Express } from 'express';
 import { createReadStream, promises as fs } from 'fs';
 import path from 'path';
 import { AuthUser } from '../auth/current-user.decorator';
+import { RuleEngineService } from '../automation/rule-engine.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,6 +46,7 @@ export class TicketsService {
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
     private readonly customFieldsService: CustomFieldsService,
+    private readonly ruleEngine: RuleEngineService,
   ) {}
 
   private defaultSlaConfig: Record<
@@ -653,6 +655,10 @@ export class TicketsService {
       this.notifications.ticketCreated(updatedTicket, user),
     );
 
+    this.ruleEngine.runForTicket(updatedTicket.id, 'TICKET_CREATED').catch((err) =>
+      console.error('Automation TICKET_CREATED failed', err),
+    );
+
     const result = await this.prisma.ticket.findUnique({
       where: { id: updatedTicket.id },
       include: {
@@ -1089,6 +1095,10 @@ export class TicketsService {
 
     await this.safeNotify(() =>
       this.notifications.ticketStatusChanged(updated, ticket.status, user),
+    );
+
+    this.ruleEngine.runForTicket(ticketId, 'STATUS_CHANGED').catch((err) =>
+      console.error('Automation STATUS_CHANGED failed', err),
     );
 
     return updated;

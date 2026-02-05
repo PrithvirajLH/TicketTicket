@@ -66,4 +66,14 @@ export class ReportsController {
   getTicketsByCategory(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
     return this.reportsService.getTicketsByCategory(query, user);
   }
+
+  @Get('team-summary')
+  getTeamSummary(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getTeamSummary(query, user);
+  }
+
+  @Get('transfers')
+  getTransfers(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getTransfers(query, user);
+  }
 }

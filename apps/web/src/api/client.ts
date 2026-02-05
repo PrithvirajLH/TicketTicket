@@ -634,6 +634,102 @@ export function deleteRoutingRule(id: string) {
   });
 }
 
+// Automation rules
+export type AutomationCondition = {
+  field?: string;
+  operator?: string;
+  value?: unknown;
+  and?: AutomationCondition[];
+  or?: AutomationCondition[];
+};
+
+export type AutomationAction = {
+  type: string;
+  teamId?: string;
+  userId?: string;
+  priority?: string;
+  status?: string;
+  body?: string;
+};
+
+export type AutomationRule = {
+  id: string;
+  name: string;
+  description?: string | null;
+  trigger: string;
+  conditions: AutomationCondition[];
+  actions: AutomationAction[];
+  isActive: boolean;
+  priority: number;
+  teamId?: string | null;
+  team?: TeamRef | null;
+  createdBy?: { id: string; displayName: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchAutomationRules() {
+  return apiFetch<{ data: AutomationRule[] }>('/automation-rules');
+}
+
+export function createAutomationRule(payload: {
+  name: string;
+  description?: string;
+  trigger: string;
+  conditions: AutomationCondition[];
+  actions: AutomationAction[];
+  isActive?: boolean;
+  priority?: number;
+  teamId?: string;
+}) {
+  return apiFetch<AutomationRule>('/automation-rules', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateAutomationRule(
+  id: string,
+  payload: Partial<Omit<AutomationRule, 'id' | 'team' | 'createdBy' | 'createdAt' | 'updatedAt'>>
+) {
+  return apiFetch<AutomationRule>(`/automation-rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteAutomationRule(id: string) {
+  return apiFetch<{ id: string }>(`/automation-rules/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function testAutomationRule(ruleId: string, ticketId: string) {
+  return apiFetch<{
+    matched: boolean;
+    actionsThatWouldRun: AutomationAction[];
+    message: string;
+  }>(`/automation-rules/${ruleId}/test`, {
+    method: 'POST',
+    body: JSON.stringify({ ticketId })
+  });
+}
+
+export function fetchAutomationRuleExecutions(ruleId: string, page = 1, pageSize = 20) {
+  return apiFetch<{
+    data: Array<{
+      id: string;
+      ruleId: string;
+      ticketId: string;
+      success: boolean;
+      error?: string | null;
+      executedAt: string;
+      ticket?: { id: string; number: number; displayId: string | null; subject: string };
+    }>;
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>(`/automation-rules/${ruleId}/executions?page=${page}&pageSize=${pageSize}`);
+}
+
 // Search types and function
 export type SearchResults = {
   tickets: Array<{
@@ -926,6 +1022,12 @@ export type ReopenRateResponse = {
 export type TicketsByCategoryResponse = {
   data: { id: string; name: string; count: number }[];
 };
+export type TeamSummaryResponse = {
+  data: { id: string; name: string; open: number; resolved: number; total: number }[];
+};
+export type TransfersResponse = {
+  data: { total: number; series: { date: string; count: number }[] };
+};
 
 export type ReportSummaryResponse = {
   ticketVolume: TicketVolumeResponse;
@@ -978,4 +1080,10 @@ export function fetchReportReopenRate(params: ReportQuery) {
 }
 export function fetchReportTicketsByCategory(params: ReportQuery) {
   return apiFetch<TicketsByCategoryResponse>(`/reports/tickets-by-category${reportQueryString(params)}`);
+}
+export function fetchReportTeamSummary(params: ReportQuery) {
+  return apiFetch<TeamSummaryResponse>(`/reports/team-summary${reportQueryString(params)}`);
+}
+export function fetchReportTransfers(params: ReportQuery) {
+  return apiFetch<TransfersResponse>(`/reports/transfers${reportQueryString(params)}`);
 }

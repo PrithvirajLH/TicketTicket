@@ -118,6 +118,7 @@ model User {
   actedNotifications Notification[] @relation("NotificationActor")
   savedViews         SavedView[]
   cannedResponses    CannedResponse[]
+  automationRulesCreated AutomationRule[]
 }
 
 model Team {
@@ -141,6 +142,7 @@ model Team {
   savedViews   SavedView[]
   cannedResponses CannedResponse[]
   customFields CustomField[]
+  automationRules AutomationRule[]
 }
 
 model Category {
@@ -208,6 +210,7 @@ model Ticket {
   slaInstance    SlaInstance?
   notifications  Notification[]
   customFieldValues CustomFieldValue[]
+  automationExecutions AutomationExecution[]
 }
 
 model CustomField {
@@ -442,4 +445,43 @@ model CannedResponse {
 
   @@index([userId])
   @@index([teamId])
+}
+
+model AutomationRule {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  trigger     String   // TICKET_CREATED, STATUS_CHANGED, SLA_APPROACHING, SLA_BREACHED
+  conditions  Json     // Array of condition objects: { field, operator, value } or { and/or: [...] }
+  actions     Json     // Array of action objects: { type, ...params }
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0)  // Lower = run first
+  teamId      String?
+  team        Team?    @relation(fields: [teamId], references: [id])
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions  AutomationExecution[]
+
+  @@index([trigger])
+  @@index([teamId])
+  @@index([isActive])
+}
+
+model AutomationExecution {
+  id         String   @id @default(uuid())
+  ruleId     String
+  rule       AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  trigger    String   // TICKET_CREATED, STATUS_CHANGED, SLA_APPROACHING, SLA_BREACHED — used for de-dupe
+  success    Boolean
+  error      String?  @db.Text
+  executedAt DateTime @default(now())
+
+  @@index([ruleId])
+  @@index([ticketId])
+  @@index([ruleId, ticketId, trigger])
 }

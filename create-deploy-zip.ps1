@@ -52,10 +52,10 @@ This folder is the App Service root. On first deploy:
 2. npm install
 3. npx prisma generate
 4. npx prisma migrate deploy   (or run migrations from your machine against production DB)
-5. node dist/main
+5. node dist/src/main.js
 
-Startup command (e.g. Azure): node dist/main
-Or with migrations: npx prisma generate && npx prisma migrate deploy && node dist/main
+Startup command (e.g. Azure): node dist/src/main.js  (or npm start)
+Or with migrations: npx prisma generate && npx prisma migrate deploy && node dist/src/main.js
 
 Web app (static)
 ----------------

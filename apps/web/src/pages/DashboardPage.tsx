@@ -4,10 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   fetchReportAgentPerformance,
   fetchReportAgentWorkload,
+  fetchReportTicketVolume,
   fetchReportReopenRate,
   fetchReportResolutionTime,
   fetchReportTicketsByAge,
   fetchReportTicketsByCategory,
+  fetchReportTeamSummary,
+  fetchReportTransfers,
   fetchReportTicketsByPriority,
   fetchReportSlaCompliance,
   fetchTicketActivity,
@@ -15,6 +18,8 @@ import {
   fetchTickets,
   type AgentPerformanceResponse,
   type AgentWorkloadResponse,
+  type TeamSummaryResponse,
+  type TransfersResponse,
   type NotificationRecord,
   type ReopenRateResponse,
   type ResolutionTimeResponse,
@@ -33,11 +38,14 @@ import { TicketActivityChart, type ActivityPoint } from '../components/dashboard
 import { AgentScorecard } from '../components/reports/AgentScorecard';
 import { AgentWorkloadChart } from '../components/reports/AgentWorkloadChart';
 import { ReopenRateChart } from '../components/reports/ReopenRateChart';
+import { TransfersChart } from '../components/reports/TransfersChart';
 import { ResolutionTimeChart } from '../components/reports/ResolutionTimeChart';
 import { SlaComplianceChart } from '../components/reports/SlaComplianceChart';
 import { TicketsByStatusChart } from '../components/reports/TicketsByStatusChart';
 import { TicketsByAgeChart } from '../components/reports/TicketsByAgeChart';
 import { TicketsByPriorityChart } from '../components/reports/TicketsByPriorityChart';
+import { TeamSummaryTable } from '../components/reports/TeamSummaryTable';
+import { TicketVolumeChart } from '../components/reports/TicketVolumeChart';
 import { formatStatus, formatTicketId } from '../utils/format';
 import type { DashboardStats, Role } from '../types';
 
@@ -177,6 +185,10 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
   const [agentWorkload, setAgentWorkload] = useState<AgentWorkloadResponse['data']>([]);
   const [reopenSeries, setReopenSeries] = useState<ReopenRateResponse['data']>([]);
   const [queueCategories, setQueueCategories] = useState<TicketsByCategoryResponse['data']>([]);
+  const [teamSummary, setTeamSummary] = useState<TeamSummaryResponse['data']>([]);
+  const [ticketVolume, setTicketVolume] = useState<{ date: string; count: number }[]>([]);
+  const [transferSeries, setTransferSeries] = useState<TransfersResponse['data']['series']>([]);
+  const [transferTotal, setTransferTotal] = useState(0);
   const [slaCompliance, setSlaCompliance] = useState<{ met: number; breached: number; total: number }>({
     met: 0,
     breached: 0,
@@ -191,6 +203,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
   const isAgent = role === 'AGENT';
   const isLead = role === 'LEAD';
   const isTeamAdmin = role === 'TEAM_ADMIN';
+  const isOwner = role === 'OWNER';
   const [activityRange, setActivityRange] = useState<'3' | '7' | '30'>(isEmployee ? '3' : '7');
   const [onlyMyTickets, setOnlyMyTickets] = useState(false);
   const [activitySort, setActivitySort] = useState<'recent' | 'oldest'>('recent');
@@ -207,11 +220,11 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
       setOnlyMyTickets(true);
       setActivitySort('recent');
     }
-    if (isLead || isTeamAdmin) {
+    if (isLead || isTeamAdmin || isOwner) {
       setOnlyMyTickets(false);
       setActivitySort('recent');
     }
-  }, [isEmployee, isAgent, isLead, isTeamAdmin]);
+  }, [isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
 
   useEffect(() => {
     let isActive = true;
@@ -284,6 +297,10 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
           setAgentWorkload([]);
           setReopenSeries([]);
           setQueueCategories([]);
+          setTeamSummary([]);
+          setTicketVolume([]);
+          setTransferSeries([]);
+          setTransferTotal(0);
           setSlaQueueStats({ atRisk: 0, overdue: 0 });
         } else {
           const rangeDays = Number(activityRange);
@@ -294,7 +311,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
           const updatedTo = toDate.toISOString().slice(0, 10);
           const activityFrom = fromDate.toISOString().slice(0, 10);
           const activityTo = toDate.toISOString().slice(0, 10);
-          const scope = isAgent ? 'assigned' : isLead || isTeamAdmin ? undefined : onlyMyTickets ? 'assigned' : undefined;
+          const scope = isAgent ? 'assigned' : isLead || isTeamAdmin || isOwner ? undefined : onlyMyTickets ? 'assigned' : undefined;
           const order = activitySort === 'oldest' ? 'asc' : 'desc';
 
           const [
@@ -315,7 +332,10 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
             resolutionResponse,
             ageResponse,
             reopenResponse,
-            categoryResponse
+            categoryResponse,
+            teamSummaryResponse,
+            volumeResponse,
+            transfersResponse
           ] = await Promise.all([
             fetchTickets({
               pageSize: RECENT_TICKETS_COUNT,
@@ -392,7 +412,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               ? fetchReportSlaCompliance({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
                   .catch(() => ({ data: { met: 0, breached: 0, total: 0 } }))
               : Promise.resolve({ data: { met: 0, breached: 0, total: 0 } }),
-            isLead
+            isLead || isOwner
               ? fetchReportAgentPerformance({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
                   .catch(() => ({ data: [] }))
               : Promise.resolve({ data: [] }),
@@ -412,7 +432,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               ? fetchReportTicketsByAge({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
                   .catch(() => ({ data: [] }))
               : Promise.resolve({ data: [] }),
-            isTeamAdmin
+            isTeamAdmin || isOwner
               ? fetchReportReopenRate({ from: activityFrom, to: activityTo })
                   .catch(() => ({ data: [] }))
               : Promise.resolve({ data: [] }),
@@ -420,6 +440,18 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               ? fetchReportTicketsByCategory({ from: activityFrom, to: activityTo, statusGroup: 'open', dateField: 'updatedAt' })
                   .catch(() => ({ data: [] }))
               : Promise.resolve({ data: [] }),
+            isOwner
+              ? fetchReportTeamSummary({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isOwner
+              ? fetchReportTicketVolume({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isOwner
+              ? fetchReportTransfers({ from: activityFrom, to: activityTo, dateField: 'updatedAt' })
+                  .catch(() => ({ data: { total: 0, series: [] } }))
+              : Promise.resolve({ data: { total: 0, series: [] } }),
           ]);
 
           if (!isActive) return;
@@ -445,6 +477,10 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
           setAgentWorkload(workloadResponse.data);
           setReopenSeries(reopenResponse.data);
           setQueueCategories(categoryResponse.data.slice(0, 6));
+          setTeamSummary(teamSummaryResponse.data);
+          setTicketVolume(volumeResponse.data);
+          setTransferSeries(transfersResponse.data.series);
+          setTransferTotal(transfersResponse.data.total);
           setSlaQueueStats({
             atRisk: atRiskResponse.meta.total,
             overdue: overdueResponse.meta.total,
@@ -471,6 +507,10 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
         setAgentWorkload([]);
         setReopenSeries([]);
         setQueueCategories([]);
+        setTeamSummary([]);
+        setTicketVolume([]);
+        setTransferSeries([]);
+        setTransferTotal(0);
         setSlaQueueStats({ atRisk: 0, overdue: 0 });
       } finally {
         if (isActive) {
@@ -494,7 +534,9 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
   const unassignedPercent = dashboardStats.open
     ? Math.round(((dashboardStats.unassigned ?? 0) / dashboardStats.open) * 100)
     : 0;
-  const activeAgents = agentWorkload.filter((row) => row.assignedOpen > 0).length;
+  const activeAgents = isOwner
+    ? agentPerformance.length
+    : agentWorkload.filter((row) => row.assignedOpen > 0).length;
   const reopenTotal = reopenSeries.reduce((sum, row) => sum + row.count, 0);
   const reopenRatePercent = dashboardStats.total
     ? Math.round((reopenTotal / dashboardStats.total) * 100)
@@ -522,7 +564,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               )}
             </div>
           )}
-          <div className={`grid gap-4 ${isEmployee ? 'sm:grid-cols-2' : isTeamAdmin ? 'md:grid-cols-2 xl:grid-cols-5' : 'md:grid-cols-2 xl:grid-cols-4'} ${headerProps ? 'mt-6' : ''} mb-6`}>
+          <div className={`grid gap-4 ${isEmployee ? 'sm:grid-cols-2' : isTeamAdmin || isOwner ? 'md:grid-cols-2 xl:grid-cols-5' : 'md:grid-cols-2 xl:grid-cols-4'} ${headerProps ? 'mt-6' : ''} mb-6`}>
             {loadingDashboard
               ? Array.from({ length: isEmployee ? 2 : 4 }).map((_, index) => (
                   <div key={`stat-skeleton-${index}`} className="rounded-xl border border-border bg-card p-6 shadow-card animate-pulse">
@@ -588,6 +630,39 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                         variant="green"
                       />
                     </>
+                  ) : isOwner ? (
+                    <>
+                      <KPICard
+                        icon={TicketIcon}
+                        value={dashboardStats.open}
+                        label="Open tickets"
+                        variant="blue"
+                      />
+                      <KPICard
+                        icon={CheckCircle2}
+                        value={dashboardStats.resolved}
+                        label="Closed tickets"
+                        variant="green"
+                      />
+                      <KPICard
+                        icon={TicketIcon}
+                        value={dashboardStats.total}
+                        label="Total requests"
+                        variant="default"
+                      />
+                      <KPICard
+                        icon={UserCheck}
+                        value={activeAgents}
+                        label="Active agents"
+                        variant="blue"
+                      />
+                      <KPICard
+                        icon={Clock}
+                        value={transferTotal}
+                        label="Transfers"
+                        variant="default"
+                      />
+                    </>
                   ) : (
                     <>
                       <KPICard
@@ -620,7 +695,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               )}
           </div>
 
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="rounded-xl border border-border bg-card overflow-visible">
             {isTeamAdmin ? (
               <div className="p-6">
                 <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -810,28 +885,6 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                   <div className="space-y-6 lg:col-span-3">
                     <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
                       <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-foreground">System health</h3>
-                        <span className="text-[11px] text-muted-foreground">Integrations</span>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        {[
-                          { label: 'Email server', status: 'Online' },
-                          { label: 'Jira', status: 'Online' },
-                          { label: 'Slack', status: 'Online' },
-                        ].map((item) => (
-                          <div key={item.label} className="flex items-center justify-between rounded-md border border-border/70 bg-white px-3 py-2">
-                            <span className="font-medium text-slate-700">{item.label}</span>
-                            <span className="flex items-center gap-2 text-[11px] font-semibold text-emerald-600">
-                              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                              {item.status}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
-                      <div className="mb-3 flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-foreground">SLA compliance</h3>
                         <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
                       </div>
@@ -851,6 +904,124 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                         <div className="h-[220px] w-full rounded-lg bg-muted/60 animate-pulse" />
                       ) : (
                         <ReopenRateChart data={reopenSeries} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : isOwner ? (
+              <div className="p-6">
+                <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold leading-tight text-foreground">Platform overview</h2>
+                    <p className="mt-0.5 text-sm leading-snug text-muted-foreground">
+                      Executive view of team performance and platform health.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-card">
+                    <span className="text-slate-500">Updated in:</span>
+                    <div className="relative">
+                      <select
+                        className="appearance-none bg-transparent pr-5 text-xs font-semibold text-foreground outline-none focus:outline-none focus:ring-0"
+                        value={activityRange}
+                        onChange={(event) => setActivityRange(event.target.value as '3' | '7' | '30')}
+                      >
+                        <option value="3">Last 3 days</option>
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-0.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </label>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-12">
+                  <div className="space-y-6 lg:col-span-4">
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Team summary</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <TeamSummaryTable data={teamSummary} />
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Tickets by priority</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <TicketsByPriorityChart data={ticketsByPriority} />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 lg:col-span-5">
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Platform activity</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[220px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <TicketVolumeChart data={ticketVolume} />
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Transfers</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <TransfersChart data={transferSeries} />
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Reopen rate</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <ReopenRateChart data={reopenSeries} />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 lg:col-span-3">
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">SLA compliance</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[220px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <SlaComplianceChart data={{ ...slaCompliance, atRisk: slaQueueStats.atRisk }} />
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-white p-4 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-foreground">Agent performance</h3>
+                        <span className="text-[11px] text-muted-foreground">{activityRangeLabel}</span>
+                      </div>
+                      {loadingDashboard ? (
+                        <div className="h-[200px] w-full rounded-lg bg-muted/60 animate-pulse" />
+                      ) : (
+                        <AgentScorecard data={agentPerformance} />
                       )}
                     </div>
                   </div>

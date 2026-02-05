@@ -62,7 +62,7 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
   }
 
   return (
-    <div className="h-48">
+    <div className="h-48 min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           <defs>

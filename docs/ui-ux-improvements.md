@@ -2,7 +2,7 @@
 
 > A comprehensive task list to transform the Codex Ticketing System into an enterprise-grade, user-friendly application.
 
-**Status (updated 2026-02-05):** Phase 1 complete. Phase 2 tasks 2.1–2.5 complete; 2.6 (Related/Linked Tickets) pending. Phase 3 tasks 3.1 (Custom Fields) and 3.2 (Reporting) complete; 3.3 (Automation Rules) and 3.4 (Audit Log page) pending. Phase 4 (Polish & Accessibility) pending.
+**Status (updated 2026-02-05):** Phase 1 complete. Phase 2 tasks 2.1–2.5 complete; 2.6 (Related/Linked Tickets) pending. Phase 3 tasks 3.1 (Custom Fields), 3.2 (Reporting), and 3.3 (Automation Rules) complete; 3.4 (Audit Log page) pending. Phase 4 (Polish & Accessibility) pending.
 
 ---
 
@@ -1203,13 +1203,13 @@ model AutomationExecution {
 
 #### Acceptance Criteria
 
-- [ ] Admin can create automation rules
-- [ ] Rule builder supports conditions and actions
-- [ ] Rules execute on specified triggers
-- [ ] Rules can be enabled/disabled
-- [ ] Execution history is logged
-- [ ] Can test rule against existing tickets
-- [ ] Multiple conditions with AND/OR logic
+- [x] Admin can create automation rules
+- [x] Rule builder supports conditions and actions
+- [x] Rules execute on specified triggers
+- [x] Rules can be enabled/disabled
+- [x] Execution history is logged
+- [x] Can test rule against existing tickets
+- [x] Multiple conditions with AND/OR logic
 
 ---
 
