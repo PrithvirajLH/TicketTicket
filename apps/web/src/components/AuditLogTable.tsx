@@ -28,6 +28,25 @@ function eventDescription(entry: AuditLogEntry): string {
   return label;
 }
 
+/** Before/after or extra details for the Details column. */
+function formatDetails(entry: AuditLogEntry): string {
+  const p = entry.payload;
+  if (!p) return '—';
+  if (entry.type === 'TICKET_STATUS_CHANGED' && p.from != null && p.to != null) {
+    return `${String(p.from)} → ${String(p.to)}`;
+  }
+  if (entry.type === 'TICKET_PRIORITY_CHANGED' && p.from != null && p.to != null) {
+    return `${String(p.from)} → ${String(p.to)}`;
+  }
+  if (entry.type === 'TICKET_ASSIGNED' && (p.assigneeName != null || p.assigneeEmail != null)) {
+    return String(p.assigneeName ?? p.assigneeEmail ?? '—');
+  }
+  if (entry.type === 'TICKET_TRANSFERRED' && p.toTeamName != null) {
+    return String(p.toTeamName);
+  }
+  return '—';
+}
+
 function ticketLabel(entry: AuditLogEntry): string {
   return entry.ticketDisplayId ?? `#${entry.ticketNumber}`;
 }
@@ -50,6 +69,7 @@ export function AuditLogTable({ data }: { data: AuditLogEntry[] }) {
             <th className="px-4 py-3 font-semibold text-foreground">User</th>
             <th className="px-4 py-3 font-semibold text-foreground">Ticket</th>
             <th className="px-4 py-3 font-semibold text-foreground">Action</th>
+            <th className="px-4 py-3 font-semibold text-foreground">Details</th>
           </tr>
         </thead>
         <tbody>
@@ -71,6 +91,9 @@ export function AuditLogTable({ data }: { data: AuditLogEntry[] }) {
               </td>
               <td className="px-4 py-3 text-foreground">
                 {eventDescription(entry)}
+              </td>
+              <td className="px-4 py-3 text-muted-foreground">
+                {formatDetails(entry)}
               </td>
             </tr>
           ))}

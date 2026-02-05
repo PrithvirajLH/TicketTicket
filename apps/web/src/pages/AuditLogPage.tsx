@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   ApiError,
   fetchAuditLog,
@@ -9,6 +10,8 @@ import {
   type UserRef,
 } from '../api/client';
 import { AuditLogTable } from '../components/AuditLogTable';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
 
 const EVENT_TYPES = [
   { value: '', label: 'All types' },
@@ -26,6 +29,7 @@ function toDateOnly(iso: string): string {
 }
 
 export function AuditLogPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState<AuditLogEntry[]>([]);
   const [meta, setMeta] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
   const [users, setUsers] = useState<UserRef[]>([]);
@@ -176,11 +180,11 @@ export function AuditLogPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Search (ticket #)</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Search</label>
             <input
               type="text"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              placeholder="e.g. 1234 or IT-123"
+              placeholder="Ticket #, ID, or user name"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && loadLog(1)}
@@ -195,18 +199,67 @@ export function AuditLogPage() {
           >
             Apply filters
           </button>
+          {(dateFrom || dateTo || userId || type || search.trim()) && (
+            <button
+              type="button"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+                setUserId('');
+                setType('');
+                setSearch('');
+                setPage(1);
+              }}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
-        {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+        {error && !loading && (
+          <div className="mt-6">
+            <ErrorState
+              title="Unable to load audit log"
+              description={error}
+              onRetry={() => loadLog(1)}
+              secondaryAction={{ label: 'Go to Dashboard', onClick: () => navigate('/dashboard') }}
+            />
+          </div>
+        )}
 
         {loading ? (
           <div className="mt-6 h-48 rounded-lg border border-border bg-muted/30 animate-pulse" />
-        ) : (
+        ) : error ? null : (
           <>
-            <div className="mt-6">
-              <AuditLogTable data={data} />
-            </div>
-            {meta.totalPages > 1 && (
+            {data.length === 0 ? (
+              <div className="mt-6">
+                <EmptyState
+                  title="No audit events"
+                  description="No events match the current filters. Try adjusting filters or clear them to see all activity."
+                  secondaryAction={
+                    dateFrom || dateTo || userId || type || search.trim()
+                      ? {
+                          label: 'Clear filters',
+                          onClick: () => {
+                            setDateFrom('');
+                            setDateTo('');
+                            setUserId('');
+                            setType('');
+                            setSearch('');
+                            setPage(1);
+                          },
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            ) : (
+              <div className="mt-6">
+                <AuditLogTable data={data} />
+              </div>
+            )}
+            {data.length > 0 && meta.totalPages > 1 && (
               <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
                 <span>
                   Page {meta.page} of {meta.totalPages} ({meta.total} total)

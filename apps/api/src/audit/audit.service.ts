@@ -142,9 +142,22 @@ export class AuditService {
       const q = params.search.trim();
       const num = parseInt(q, 10);
       if (!Number.isNaN(num)) {
-        conditions.push({ ticket: { number: num } });
+        // Numeric query: match ticket number only (and displayId e.g. IT-1234)
+        conditions.push({
+          OR: [
+            { ticket: { number: num } },
+            { ticket: { displayId: { contains: q, mode: 'insensitive' } } },
+          ],
+        });
       } else {
-        conditions.push({ ticket: { displayId: { contains: q, mode: 'insensitive' } } });
+        // Text query: match displayId, user name, or user email
+        conditions.push({
+          OR: [
+            { ticket: { displayId: { contains: q, mode: 'insensitive' } } },
+            { createdBy: { displayName: { contains: q, mode: 'insensitive' } } },
+            { createdBy: { email: { contains: q, mode: 'insensitive' } } },
+          ],
+        });
       }
     }
 

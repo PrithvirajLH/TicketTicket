@@ -645,7 +645,11 @@ export class TicketsService {
         data: {
           ticketId: updatedTicket.id,
           type: 'TICKET_ASSIGNED',
-          payload: { assigneeId },
+          payload: {
+            assigneeId,
+            assigneeName: updatedTicket.assignee?.displayName ?? null,
+            assigneeEmail: updatedTicket.assignee?.email ?? null,
+          },
           createdById: user.id,
         },
       });
@@ -853,7 +857,11 @@ export class TicketsService {
       data: {
         ticketId: ticket.id,
         type: 'TICKET_ASSIGNED',
-        payload: { assigneeId },
+        payload: {
+          assigneeId,
+          assigneeName: updated.assignee?.displayName ?? null,
+          assigneeEmail: updated.assignee?.email ?? null,
+        },
         createdById: user.id,
       },
     });
@@ -970,6 +978,7 @@ export class TicketsService {
         payload: {
           fromTeamId: priorTeamId,
           toTeamId: payload.newTeamId,
+          toTeamName: updated.assignedTeam?.name ?? null,
           assigneeId: payload.assigneeId ?? null,
         },
         createdById: user.id,
