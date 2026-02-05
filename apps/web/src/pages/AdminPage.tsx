@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Clock, GitMerge, Layers, ListChecks, Zap } from 'lucide-react';
+import { Clock, GitMerge, History, Layers, ListChecks, Zap } from 'lucide-react';
 import type { Role } from '../types';
 
 const adminCards: { title: string; description: string; href: string; icon: typeof Clock; roles: Role[] }[] = [
@@ -22,6 +22,13 @@ const adminCards: { title: string; description: string; href: string; icon: type
     description: 'Run actions when tickets are created, status changes, or SLA is at risk.',
     href: '/automation',
     icon: Zap,
+    roles: ['TEAM_ADMIN', 'OWNER']
+  },
+  {
+    title: 'Audit Log',
+    description: 'Ticket changes and actions for compliance and troubleshooting.',
+    href: '/audit-log',
+    icon: History,
     roles: ['TEAM_ADMIN', 'OWNER']
   },
   {

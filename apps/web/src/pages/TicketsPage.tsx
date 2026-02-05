@@ -13,14 +13,18 @@ import {
   type UserRef
 } from '../api/client';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
 import { FilterPanel } from '../components/filters/FilterPanel';
 import { RelativeTime } from '../components/RelativeTime';
 import { TicketTableView } from '../components/TicketTableView';
 import { ViewToggle } from '../components/ViewToggle';
+import { TicketCardSkeleton, TicketTableSkeleton } from '../components/skeletons';
 import { useFilters } from '../hooks/useFilters';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useTableSettings } from '../hooks/useTableSettings';
 import { useTicketSelection } from '../hooks/useTicketSelection';
+import { useToast } from '../hooks/useToast';
 import type { Role, StatusFilter, TicketScope } from '../types';
 import { formatStatus, getSlaTone, statusBadgeClass } from '../utils/format';
 
@@ -30,7 +34,8 @@ export function TicketsPage({
   presetStatus,
   presetScope,
   refreshKey,
-  teamsList
+  teamsList,
+  onCreateTicket,
 }: {
   role: Role;
   currentEmail: string;
@@ -38,6 +43,7 @@ export function TicketsPage({
   presetScope: TicketScope;
   refreshKey: number;
   teamsList: TeamRef[];
+  onCreateTicket?: () => void;
 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -57,7 +63,7 @@ export function TicketsPage({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toast = useToast();
   const [focusedTicketIndex, setFocusedTicketIndex] = useState(0);
   const [anchorIndex, setAnchorIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -153,13 +159,6 @@ export function TicketsPage({
         setRequesterOptions([]);
       });
   }, [role]);
-
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 3000);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
 
   async function handleBulkAssign(assigneeId?: string) {
     const result = await bulkAssignTickets(selection.selectedIds, assigneeId);
@@ -266,20 +265,6 @@ export function TicketsPage({
 
   return (
     <section className="mt-8 min-w-0 space-y-6 animate-fade-in">
-      {toast && (
-        <div className="fixed right-8 top-6 z-50">
-          <div
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg ${
-              toast.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
-            }`}
-          >
-            {toast.message}
-          </div>
-        </div>
-      )}
-
       <div className="glass-card min-w-0 p-6">
         {selection.isSomeSelected && role !== 'EMPLOYEE' && (
           <BulkActionsToolbar
@@ -292,10 +277,10 @@ export function TicketsPage({
             teamsList={teamsList}
             assignableUsers={assignableUsers}
             onSuccess={(msg) => {
-              setToast({ message: msg, type: 'success' });
+              toast.success(msg);
               loadTickets();
             }}
-            onError={(msg) => setToast({ message: msg, type: 'error' })}
+            onError={(msg) => toast.error(msg)}
           />
         )}
 
@@ -357,15 +342,24 @@ export function TicketsPage({
               assignableUsers={assignableUsers}
               requesterOptions={requesterOptions}
               onSaveSuccess={() => {
-                setToast({ message: 'View saved', type: 'success' });
+                toast.success('View saved');
                 loadTickets();
               }}
-              onError={(msg) => setToast({ message: msg, type: 'error' })}
+              onError={(msg) => toast.error(msg)}
             />
           )}
         </div>
 
-        {ticketError && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
+        {ticketError && (
+          <div className="mt-4">
+            <ErrorState
+              title="Unable to load tickets"
+              description={ticketError}
+              onRetry={loadTickets}
+              secondaryAction={{ label: 'Go to Dashboard', onClick: () => navigate('/dashboard') }}
+            />
+          </div>
+        )}
 
         {hasActiveFilters && role !== 'EMPLOYEE' && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -416,21 +410,37 @@ export function TicketsPage({
           </div>
         )}
 
-        {loadingTickets && (
+        {loadingTickets && tableSettings.viewMode === 'grid' && (
           <div className="mt-4 space-y-3">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div
+              <TicketCardSkeleton
                 key={`ticket-skeleton-${index}`}
-                className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 animate-pulse"
-              >
-                <div className="h-3 w-40 rounded-full bg-slate-200" />
-                <div className="mt-2 h-3 w-24 rounded-full bg-slate-100" />
-              </div>
+                showCheckbox={role !== 'EMPLOYEE'}
+              />
             ))}
           </div>
         )}
-        {!loadingTickets && filteredTickets.length === 0 && (
-          <p className="text-sm text-slate-500 mt-4">No tickets match this filter.</p>
+        {loadingTickets && tableSettings.viewMode === 'table' && (
+          <TicketTableSkeleton
+            columnWidths={tableSettings.columnWidths}
+            columnVisibility={tableSettings.columnVisibility}
+            showCheckbox={role !== 'EMPLOYEE'}
+            rowCount={8}
+          />
+        )}
+        {!loadingTickets && !ticketError && filteredTickets.length === 0 && (
+          <div className="mt-4">
+            <EmptyState
+              title="No tickets found"
+              description="Try adjusting your filters or create a new ticket to get started."
+              primaryAction={
+                onCreateTicket ? { label: 'Create Ticket', onClick: onCreateTicket } : undefined
+              }
+              secondaryAction={
+                hasActiveFilters ? { label: 'Clear filters', onClick: clearFilters } : undefined
+              }
+            />
+          </div>
         )}
 
         {!loadingTickets && filteredTickets.length > 0 && role !== 'EMPLOYEE' && tableSettings.viewMode === 'grid' && (

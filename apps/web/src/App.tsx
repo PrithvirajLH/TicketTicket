@@ -28,16 +28,20 @@ import { CommandPalette } from './components/CommandPalette';
 import { CreateTicketModal, type CreateTicketForm } from './components/CreateTicketModal';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
+import { ToastContainer } from './components/ToastContainer';
 import { TopBar } from './components/TopBar';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { getShortcutContext, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotifications } from './hooks/useNotifications';
+import { useToast } from './hooks/useToast';
 import { DashboardPage } from './pages/DashboardPage';
 import { ManagerViewsPage } from './pages/ManagerViewsPage';
 import { SlaSettingsPage } from './pages/SlaSettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AdminPage } from './pages/AdminPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 import { AutomationRulesPage } from './pages/AutomationRulesPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { RoutingRulesPage } from './pages/RoutingRulesPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { CustomFieldsAdminPage } from './pages/CustomFieldsAdminPage';
@@ -119,7 +123,7 @@ function deriveNavKey(
   if (pathname.startsWith('/sla-settings')) {
     return 'sla-settings';
   }
-  if (pathname.startsWith('/routing') || pathname.startsWith('/automation') || pathname.startsWith('/categories') || pathname.startsWith('/custom-fields')) {
+  if (pathname.startsWith('/routing') || pathname.startsWith('/automation') || pathname.startsWith('/audit-log') || pathname.startsWith('/categories') || pathname.startsWith('/custom-fields')) {
     return 'admin';
   }
   if (pathname.startsWith('/reports')) {
@@ -149,6 +153,7 @@ function deriveNavKey(
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [currentEmail, setCurrentEmail] = useState(() => getDemoUserEmail() || personas[0].email);
   const currentPersona = useMemo(
@@ -363,8 +368,10 @@ function App() {
       setCreateCustomFieldValues({});
       setShowCreateModal(false);
       setRefreshKey((prev) => prev + 1);
+      toast.success('Ticket created successfully.');
     } catch (error) {
       setTicketError('Unable to create ticket.');
+      toast.error('Unable to create ticket.');
     }
   }
 
@@ -449,6 +456,8 @@ function App() {
     ? 'Routing Rules'
     : location.pathname.startsWith('/automation')
     ? 'Automation Rules'
+    : location.pathname.startsWith('/audit-log')
+    ? 'Audit Log'
     : location.pathname.startsWith('/categories')
     ? 'Categories'
     : location.pathname.startsWith('/custom-fields')
@@ -458,6 +467,8 @@ function App() {
     ? 'Manage keyword-based routing logic.'
     : location.pathname.startsWith('/automation')
     ? 'Run actions when tickets are created, status changes, or SLA is at risk.'
+    : location.pathname.startsWith('/audit-log')
+    ? 'Ticket changes and actions for compliance and troubleshooting.'
     : location.pathname.startsWith('/categories')
     ? 'Organize ticket categories and subcategories.'
     : location.pathname.startsWith('/custom-fields')
@@ -470,6 +481,7 @@ function App() {
 
   return (
     <div className="min-h-screen overflow-hidden">
+      <ToastContainer />
       <div className="flex">
         <Sidebar
           collapsed={isSidebarCollapsed}
@@ -621,6 +633,16 @@ function App() {
               }
             />
             <Route
+              path="/audit-log"
+              element={
+                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
+                  <AuditLogPage />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route
               path="/categories"
               element={
                 currentPersona.role === 'OWNER' ? (
@@ -650,6 +672,7 @@ function App() {
                   presetScope={ticketPresetScope}
                   refreshKey={refreshKey}
                   teamsList={teamsList}
+                  onCreateTicket={() => setShowCreateModal(true)}
                 />
               }
             />
@@ -664,7 +687,7 @@ function App() {
                 />
               }
             />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </main>
       </div>

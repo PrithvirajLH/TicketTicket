@@ -30,9 +30,11 @@ import {
   type TicketsByPriorityResponse,
   type TicketAgeBucketResponse
 } from '../api/client';
+import { EmptyState } from '../components/EmptyState';
 import { RelativeTime } from '../components/RelativeTime';
 import { TopBar } from '../components/TopBar';
 import { KPICard } from '../components/dashboard/KPICard';
+import { KPICardSkeleton } from '../components/skeletons';
 import { StatusBadge } from '../components/dashboard/StatusBadge';
 import { TicketActivityChart, type ActivityPoint } from '../components/dashboard/TicketActivityChart';
 import { AgentScorecard } from '../components/reports/AgentScorecard';
@@ -566,16 +568,8 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
           )}
           <div className={`grid gap-4 ${isEmployee ? 'sm:grid-cols-2' : isTeamAdmin || isOwner ? 'md:grid-cols-2 xl:grid-cols-5' : 'md:grid-cols-2 xl:grid-cols-4'} ${headerProps ? 'mt-6' : ''} mb-6`}>
             {loadingDashboard
-              ? Array.from({ length: isEmployee ? 2 : 4 }).map((_, index) => (
-                  <div key={`stat-skeleton-${index}`} className="rounded-xl border border-border bg-card p-6 shadow-card animate-pulse">
-                    <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 rounded-xl bg-muted" />
-                      <div className="flex-1">
-                        <div className="h-6 w-16 rounded bg-muted/70" />
-                        <div className="mt-2 h-3 w-24 rounded bg-muted/60" />
-                      </div>
-                    </div>
-                  </div>
+              ? Array.from({ length: isEmployee ? 2 : isTeamAdmin || isOwner ? 5 : 4 }).map((_, index) => (
+                  <KPICardSkeleton key={`stat-skeleton-${index}`} />
                 ))
               : (
                 <>
@@ -1218,9 +1212,15 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                   )}
 
                   {!isLead && !isTeamAdmin && !loadingDashboard && recentTickets.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {isEmployee ? 'No recent activity in the last 3 days.' : 'No recent tickets yet.'}
-                    </p>
+                    <EmptyState
+                      title={isEmployee ? 'No recent activity' : 'No recent tickets yet'}
+                      description={
+                        isEmployee
+                          ? 'No recent activity in the last 3 days.'
+                          : 'Recent tickets will appear here.'
+                      }
+                      compact
+                    />
                   )}
 
                   {!isLead && !isTeamAdmin && !loadingDashboard && recentTickets.length > 0 && (

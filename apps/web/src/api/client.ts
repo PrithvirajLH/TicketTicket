@@ -1087,3 +1087,67 @@ export function fetchReportTeamSummary(params: ReportQuery) {
 export function fetchReportTransfers(params: ReportQuery) {
   return apiFetch<TransfersResponse>(`/reports/transfers${reportQueryString(params)}`);
 }
+
+// ——— Audit Log ———
+export type AuditLogEntry = {
+  id: string;
+  ticketId: string;
+  ticketNumber: number;
+  ticketDisplayId: string | null;
+  type: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+  createdById: string | null;
+  createdBy: { id: string; displayName: string; email: string } | null;
+};
+
+export type AuditLogParams = {
+  dateFrom?: string;
+  dateTo?: string;
+  userId?: string;
+  type?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export function fetchAuditLog(params?: AuditLogParams) {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === '') return;
+      query.set(key, String(value));
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{
+    data: AuditLogEntry[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>(`/audit-log${suffix}`);
+}
+
+export async function fetchAuditLogExport(params?: Omit<AuditLogParams, 'page' | 'pageSize'>): Promise<string> {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === '') return;
+      query.set(key, String(value));
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const response = await fetch(`${API_BASE}/audit-log/export${suffix}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const raw = await response.text();
+    let message = raw || 'Export failed';
+    try {
+      const body = JSON.parse(raw) as { message?: string };
+      if (typeof body?.message === 'string') message = body.message;
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(message, response.status);
+  }
+  return response.text();
+}

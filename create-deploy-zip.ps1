@@ -12,11 +12,9 @@ Set-Location $root
 & npm run build -w apps/api 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "API build failed." }
 
-# Optional: build web if you want SPA in zip. Skip to avoid vite config issues; include web/dist only if it exists.
-$webDistSrc = Join-Path $root "apps\web\dist"
-if (-not (Test-Path $webDistSrc)) {
-  Write-Host "Web dist not found (run 'npm run build -w apps/web' first to include SPA). Creating API-only zip." -ForegroundColor Yellow
-}
+Write-Host "Building Web..." -ForegroundColor Cyan
+& npm run build -w apps/web
+if ($LASTEXITCODE -ne 0) { throw "Web build failed. Fix errors above and run the script again." }
 
 Write-Host "Preparing deploy folder..." -ForegroundColor Cyan
 if (Test-Path $deployDir) { Remove-Item $deployDir -Recurse -Force }
@@ -31,12 +29,25 @@ if (Test-Path (Join-Path $root "apps\api\package-lock.json")) {
 }
 Copy-Item -Path (Join-Path $root "apps\api\.env.example") -Destination (Join-Path $deployDir ".env.example") -ErrorAction SilentlyContinue
 
-# Web app build (for static hosting). Include only if already built.
+# Install production dependencies and generate Prisma client so the zip is self-contained (Azure zip deploy does not run npm install).
+Write-Host "Installing production dependencies in deploy folder..." -ForegroundColor Cyan
+Push-Location $deployDir
+try {
+  & npm install --omit=dev 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "npm install failed." }
+  Write-Host "Generating Prisma client..." -ForegroundColor Cyan
+  & npx prisma generate 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "prisma generate failed." }
+} finally {
+  Pop-Location
+}
+
+# Web app build: copy to "public" so the API serves the SPA from the same URL (single-app deploy).
 $webDist = Join-Path $root "apps\web\dist"
 if (Test-Path $webDist) {
-  New-Item -ItemType Directory -Path (Join-Path $deployDir "web") -Force | Out-Null
-  Copy-Item -Path "$webDist\*" -Destination (Join-Path $deployDir "web") -Recurse
-  Write-Host "Included web app in zip." -ForegroundColor Green
+  New-Item -ItemType Directory -Path (Join-Path $deployDir "public") -Force | Out-Null
+  Copy-Item -Path "$webDist\*" -Destination (Join-Path $deployDir "public") -Recurse
+  Write-Host "Included frontend in zip (API will serve from /)." -ForegroundColor Green
 }
 
 # Deploy instructions
@@ -44,22 +55,19 @@ $readme = @"
 CODEX TICKETING SYSTEM - DEPLOY PACKAGE
 ========================================
 
-API (Node.js)
+API (Node.js) - This zip includes node_modules and a generated Prisma client.
 -------------
-This folder is the App Service root. On first deploy:
-
 1. Set environment variables (see .env.example). Required: DATABASE_URL, DIRECT_URL, PORT, NODE_ENV, CORS_ORIGIN, WEB_APP_URL.
-2. npm install
-3. npx prisma generate
-4. npx prisma migrate deploy   (or run migrations from your machine against production DB)
-5. node dist/src/main.js
+2. If you deploy from source (e.g. git) instead of this zip: run "npm install --omit=dev", then "npx prisma generate", then "npx prisma migrate deploy". Prisma is a production dependency so install includes the CLI.
+3. Run migrations (once): from your machine against production DB, or set startup to: npx prisma migrate deploy && node dist/src/main.js
+4. Start: node dist/src/main.js  (or npm start)
 
 Startup command (e.g. Azure): node dist/src/main.js  (or npm start)
-Or with migrations: npx prisma generate && npx prisma migrate deploy && node dist/src/main.js
+With migrations on each start: npx prisma migrate deploy && node dist/src/main.js
 
-Web app (static)
-----------------
-The 'web' folder contains the built SPA. Host it on any static host (e.g. Azure Static Web Apps, CDN, or same server). Set VITE_API_BASE_URL to your API URL (e.g. https://your-api.azurewebsites.net/api).
+Web app (single-app)
+--------------------
+The 'public' folder contains the built SPA. The API serves it from the same origin (GET / shows the app; /api/* is the API). Build the web app with VITE_API_BASE_URL=/api so it calls the same host.
 
 Docs: see repo docs/azure-app-service-setup.md and docs/azure-env-settings.md
 "@

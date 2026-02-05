@@ -260,6 +260,8 @@ App Service runs `npm install` when it sees `package.json`; it does **not** run 
 
 - **Option B:** Add a custom startup script that runs `npx prisma generate && npx prisma migrate deploy && node dist/src/main.js`, and ensure `prisma` CLI is in `apps/api` dependencies. Then set **Startup Command** to that script.
 
+**Prisma binary targets:** The schema uses `binaryTargets = ["native", "debian-openssl-3.0.x"]`, which is correct for Azure App Service (Linux) and Debian with OpenSSL 3. If you deploy to **Windows** App Service or a different Linux base, either add that target in `apps/api/prisma/schema.prisma` or generate the client on the target machine so Prisma runs correctly at runtime.
+
 After the first deploy, open:  
 `https://ticketing-app-xxx.azurewebsites.net/api`  
 (or a known route like `/api/health` if you add one). You should get a response from the API.

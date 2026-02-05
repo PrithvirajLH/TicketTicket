@@ -8,7 +8,9 @@ import {
   type TeamRef,
   type TicketRecord
 } from '../api/client';
+import { EmptyState } from '../components/EmptyState';
 import { RelativeTime } from '../components/RelativeTime';
+import { useToast } from '../hooks/useToast';
 import { formatStatus, formatTicketId, getSlaTone, statusBadgeClass } from '../utils/format';
 
 const TRIAGE_COLUMNS = [
@@ -51,7 +53,7 @@ export function TriageBoardPage({
   const [draggingTicketId, setDraggingTicketId] = useState<string | null>(null);
   const [draggingStatus, setDraggingStatus] = useState<string | null>(null);
   const [dragTargetStatus, setDragTargetStatus] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toast = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [teamFilterId, setTeamFilterId] = useState('');
 
@@ -96,10 +98,10 @@ export function TriageBoardPage({
     try {
       const updated = await assignTicket(ticket.id, {});
       setTickets((prev) => prev.map((item) => (item.id === ticket.id ? { ...item, ...updated } : item)));
-      setToast({ message: 'Ticket assigned to you.', type: 'success' });
+      toast.success('Ticket assigned to you.');
     } catch (err) {
       setActionError('Unable to assign ticket.');
-      setToast({ message: 'Unable to assign ticket.', type: 'error' });
+      toast.error('Unable to assign ticket.');
     } finally {
       setActionTicketId(null);
     }
@@ -111,10 +113,10 @@ export function TriageBoardPage({
     try {
       const updated = await transitionTicket(ticketId, { status });
       setTickets((prev) => prev.map((item) => (item.id === ticketId ? { ...item, ...updated } : item)));
-      setToast({ message: `Moved to ${formatStatus(status)}.`, type: 'success' });
+      toast.success(`Moved to ${formatStatus(status)}.`);
     } catch (err) {
       setActionError('Unable to move ticket to that status.');
-      setToast({ message: 'Unable to move ticket to that status.', type: 'error' });
+      toast.error('Unable to move ticket to that status.');
     } finally {
       setActionTicketId(null);
     }
@@ -150,10 +152,7 @@ export function TriageBoardPage({
       return;
     }
     if (!isValidTransition(draggingStatus, status)) {
-      setToast({
-        message: `Cannot move from ${formatStatus(draggingStatus)} to ${formatStatus(status)}.`,
-        type: 'error'
-      });
+      toast.error(`Cannot move from ${formatStatus(draggingStatus)} to ${formatStatus(status)}.`);
       return;
     }
     event.preventDefault();
@@ -166,7 +165,7 @@ export function TriageBoardPage({
       const ticket = tickets.find((item) => item.id === id);
       if (!ticket || ticket.status === status) {
         if (ticket?.status === status) {
-          setToast({ message: 'Ticket already in that status.', type: 'info' });
+          toast.info('Ticket already in that status.');
         }
         return;
       }
@@ -182,14 +181,6 @@ export function TriageBoardPage({
     }
     return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
   }
-
-  useEffect(() => {
-    if (!toast) {
-      return;
-    }
-    const timer = window.setTimeout(() => setToast(null), 2500);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
 
   const filteredTickets = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -220,21 +211,6 @@ export function TriageBoardPage({
 
   return (
     <section className="mt-8 space-y-6 animate-fade-in">
-      {toast && (
-        <div className="fixed right-8 top-6 z-50">
-          <div
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg ${
-              toast.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : toast.type === 'error'
-                ? 'border-rose-200 bg-rose-50 text-rose-700'
-                : 'border-slate-200 bg-white text-slate-700'
-            }`}
-          >
-            {toast.message}
-          </div>
-        </div>
-      )}
       <div className="glass-card p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -304,7 +280,11 @@ export function TriageBoardPage({
                   </div>
                   <div className="mt-3 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                     {columnTickets.length === 0 && (
-                      <p className="text-xs text-slate-400">No tickets here.</p>
+                      <EmptyState
+                        title="No tickets"
+                        description="Drag tickets here or change status."
+                        compact
+                      />
                     )}
                     {columnTickets.map((ticket) => (
                       <button

@@ -27,6 +27,7 @@ import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEd
 import { SlaCountdownTimer } from '../components/SlaCountdownTimer';
 import { copyToClipboard } from '../utils/clipboard';
 import { htmlMentionsToMarkdown } from '../utils/messageBody';
+import { TicketDetailSkeleton } from '../components/skeletons';
 import { formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -518,10 +519,10 @@ export function TicketDetailPage({
       <div className="grid gap-6 xl:grid-cols-[1.6fr_0.8fr]">
         <div className="space-y-6">
           {loadingDetail && !ticket && (
-            <div className="glass-card p-5 animate-pulse">
-              <div className="h-3 w-24 rounded-full bg-slate-200" />
-              <div className="mt-3 h-6 w-96 rounded-full bg-slate-200" />
-              <div className="mt-3 h-3 w-48 rounded-full bg-slate-100" />
+            <div className="glass-card p-5 space-y-3">
+              <div className="h-3 w-24 rounded skeleton-shimmer" />
+              <div className="h-6 w-96 max-w-full rounded skeleton-shimmer" />
+              <div className="h-3 w-48 rounded skeleton-shimmer" />
             </div>
           )}
           {ticket && (
@@ -647,17 +648,7 @@ export function TicketDetailPage({
               </div>
             )}
             {loadingDetail && !ticket && (
-              <div className="mt-4 space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={`message-skeleton-${index}`}
-                    className="rounded-2xl border border-slate-200/70 bg-white/80 p-3 animate-pulse"
-                  >
-                    <div className="h-3 w-32 rounded-full bg-slate-200" />
-                    <div className="mt-3 h-3 w-48 rounded-full bg-slate-100" />
-                  </div>
-                ))}
-              </div>
+              <TicketDetailSkeleton count={4} className="mt-4" />
             )}
             {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
             {ticket && (

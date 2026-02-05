@@ -19,7 +19,7 @@ export const TABLE_COLUMN_IDS = [
 
 export type TableColumnId = (typeof TABLE_COLUMN_IDS)[number];
 
-const DEFAULT_WIDTHS: Record<TableColumnId, number> = {
+export const DEFAULT_WIDTHS: Record<TableColumnId, number> = {
   checkbox: 44,
   id: 100,
   subject: 240,

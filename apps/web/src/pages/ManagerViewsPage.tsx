@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchTicketMetrics, type TeamRef } from '../api/client';
+import { EmptyState } from '../components/EmptyState';
+import { ErrorState } from '../components/ErrorState';
 import { formatStatus, statusBadgeClass } from '../utils/format';
 
 type MetricSnapshot = {
@@ -90,20 +92,27 @@ export function ManagerViewsPage({
             Refresh metrics
           </button>
         </div>
-        {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+        {error && (
+          <div className="mt-4">
+            <ErrorState
+              title="Unable to load metrics"
+              description={error}
+              onRetry={loadMetrics}
+            />
+          </div>
+        )}
       </div>
 
       {!loading && !error && (!hasTeams || isEmpty) && (
-        <div className="glass-card p-6">
-          <p className="text-sm font-semibold text-slate-900">
-            {hasTeams ? 'No tickets yet' : 'No teams available yet'}
-          </p>
-          <p className="text-sm text-slate-500 mt-1">
-            {hasTeams
+        <EmptyState
+          title={hasTeams ? 'No tickets yet' : 'No teams available yet'}
+          description={
+            hasTeams
               ? 'Once tickets are created, metrics will appear here.'
-              : 'Add departments to start tracking workload and metrics.'}
-          </p>
-        </div>
+              : 'Add departments to start tracking workload and metrics.'
+          }
+          secondaryAction={{ label: 'Refresh', onClick: loadMetrics }}
+        />
       )}
 
       <div className="grid gap-4 md:grid-cols-3">
