@@ -9,6 +9,8 @@ import {
   followTicket,
   fetchTeamMembers,
   fetchTicketById,
+  fetchTicketEvents,
+  fetchTicketMessages,
   uploadTicketAttachment,
   transitionTicket,
   transferTicket,
@@ -16,6 +18,7 @@ import {
   type TeamMember,
   type TeamRef,
   type TicketDetail,
+  type TicketEvent,
   type TicketMessage
 } from '../api/client';
 import { CustomFieldsDisplay } from '../components/CustomFieldRenderer';
@@ -55,6 +58,14 @@ export function TicketDetailPage({
 }) {
   const { ticketId } = useParams();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [messages, setMessages] = useState<TicketMessage[]>([]);
+  const [messageCursor, setMessageCursor] = useState<string | null>(null);
+  const [messagesHasMore, setMessagesHasMore] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [events, setEvents] = useState<TicketEvent[]>([]);
+  const [eventCursor, setEventCursor] = useState<string | null>(null);
+  const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -83,8 +94,10 @@ export function TicketDetailPage({
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
   const activeTicketIdRef = useRef<string | null>(null);
   const detailRequestSeqRef = useRef(0);
+  const messageRequestSeqRef = useRef(0);
+  const eventRequestSeqRef = useRef(0);
   const navigate = useNavigate();
-  const statusEvents = ticket ? ticket.events.filter((event) => event.type === 'TICKET_STATUS_CHANGED') : [];
+  const statusEvents = events.filter((event) => event.type === 'TICKET_STATUS_CHANGED');
   const followers = ticket?.followers ?? [];
   const isFollowing = followers.some((follower) => follower.user.email === currentEmail);
   const canManage = role !== 'EMPLOYEE';
@@ -147,7 +160,7 @@ export function TicketDetailPage({
       return;
     }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket?.id, ticket?.messages?.length]);
+  }, [ticket?.id, messages.length]);
 
   useEffect(() => {
     if (role === 'EMPLOYEE') {
@@ -229,6 +242,68 @@ export function TicketDetailPage({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canManage, ticket?.assignee, navigate]);
 
+  async function loadMessagesPage(id: string, reset = false) {
+    const requestSeq = ++messageRequestSeqRef.current;
+    if (reset) {
+      setMessages([]);
+      setMessageCursor(null);
+      setMessagesHasMore(false);
+    }
+    setMessagesLoading(true);
+    try {
+      const response = await fetchTicketMessages(id, {
+        cursor: reset ? undefined : messageCursor ?? undefined,
+        take: 50,
+      });
+      if (messageRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      setMessages((prev) => (reset ? response.data : [...response.data, ...prev]));
+      setMessageCursor(response.nextCursor ?? null);
+      setMessagesHasMore(Boolean(response.nextCursor));
+    } catch {
+      if (messageRequestSeqRef.current === requestSeq && reset) {
+        setMessages([]);
+        setMessagesHasMore(false);
+      }
+    } finally {
+      if (messageRequestSeqRef.current === requestSeq) {
+        setMessagesLoading(false);
+      }
+    }
+  }
+
+  async function loadEventsPage(id: string, reset = false) {
+    const requestSeq = ++eventRequestSeqRef.current;
+    if (reset) {
+      setEvents([]);
+      setEventCursor(null);
+      setEventsHasMore(false);
+    }
+    setEventsLoading(true);
+    try {
+      const response = await fetchTicketEvents(id, {
+        cursor: reset ? undefined : eventCursor ?? undefined,
+        take: 50,
+      });
+      if (eventRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      setEvents((prev) => (reset ? response.data : [...response.data, ...prev]));
+      setEventCursor(response.nextCursor ?? null);
+      setEventsHasMore(Boolean(response.nextCursor));
+    } catch {
+      if (eventRequestSeqRef.current === requestSeq && reset) {
+        setEvents([]);
+        setEventsHasMore(false);
+      }
+    } finally {
+      if (eventRequestSeqRef.current === requestSeq) {
+        setEventsLoading(false);
+      }
+    }
+  }
+
   async function loadTicketDetail(id: string) {
     const requestSeq = ++detailRequestSeqRef.current;
     const isNavigatingToDifferentTicket = activeTicketIdRef.current !== null && activeTicketIdRef.current !== id;
@@ -240,6 +315,12 @@ export function TicketDetailPage({
     if (isNavigatingToDifferentTicket) {
       // Avoid briefly showing the wrong ticket while navigating between ids.
       setTicket(null);
+      setMessages([]);
+      setEvents([]);
+      setMessageCursor(null);
+      setEventCursor(null);
+      setMessagesHasMore(false);
+      setEventsHasMore(false);
     }
     try {
       const detail = await fetchTicketById(id);
@@ -248,6 +329,8 @@ export function TicketDetailPage({
         return;
       }
       setTicket(detail);
+      void loadMessagesPage(id, true);
+      void loadEventsPage(id, true);
     } catch (error) {
       if (detailRequestSeqRef.current !== requestSeq) {
         return;
@@ -285,28 +368,17 @@ export function TicketDetailPage({
       createdAt: new Date().toISOString(),
       author: { id: 'pending', email: currentEmail, displayName: currentEmail.split('@')[0] || 'You' }
     };
-    setTicket((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, optimisticMessage] } : prev
-    );
+    setMessages((prev) => [...prev, optimisticMessage]);
     setMessageBody('');
     addTicketMessage(ticketId, { body: bodyToSend, type: messageType })
       .then((serverMessage) => {
-        setTicket((prev) =>
-          prev
-            ? {
-                ...prev,
-                messages: prev.messages.map((m) =>
-                  m.id === optimisticId ? serverMessage : m
-                )
-              }
-            : prev
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? serverMessage : m))
         );
-        loadTicketDetail(ticketId);
+        void loadEventsPage(ticketId, true);
       })
       .catch(() => {
-        setTicket((prev) =>
-          prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev
-        );
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setTicketError('Unable to send reply.');
       });
   }
@@ -660,7 +732,19 @@ export function TicketDetailPage({
                     aria-labelledby="tab-timeline"
                     className="flex-1 min-h-0 overflow-y-auto pr-2"
                   >
-                    <ActivityTimeline ticket={ticket} role={role} />
+                    <ActivityTimeline ticket={ticket} events={events} messages={messages} role={role} />
+                    {eventsHasMore && (
+                      <div className="mt-4 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => ticketId && loadEventsPage(ticketId)}
+                          disabled={eventsLoading}
+                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {eventsLoading ? 'Loading…' : 'Load older events'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -669,10 +753,22 @@ export function TicketDetailPage({
                     aria-labelledby="tab-conversation"
                     className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4"
                   >
-                    {ticket.messages.length === 0 && (
+                    {messages.length === 0 && !messagesLoading && (
                       <div className="text-sm text-slate-500">No messages yet. Start the conversation.</div>
                     )}
-                    {ticket.messages.map((message) => {
+                    {messagesHasMore && (
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => ticketId && loadMessagesPage(ticketId)}
+                          disabled={messagesLoading}
+                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {messagesLoading ? 'Loading…' : 'Load older messages'}
+                        </button>
+                      </div>
+                    )}
+                    {messages.map((message) => {
                     const isOptimistic =
                       typeof message.id === 'string' && message.id.startsWith('opt-');
                     const isOwn = message.author?.email === currentEmail;

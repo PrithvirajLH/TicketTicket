@@ -24,10 +24,10 @@ export function TableRowSkeleton({
   const widths = columnWidths ?? DEFAULT_WIDTHS;
 
   return (
-    <tr className={cn('border-b border-slate-100', className)} aria-hidden>
+    <tr className={cn('border-b border-border/60', className)} aria-hidden>
       {showCheckbox && visibleColumns.includes('checkbox') && (
         <td
-          className="sticky left-0 z-[2] border-b border-r border-slate-100 bg-white p-0"
+          className="sticky left-0 z-[2] border-b border-r border-border/60 bg-card p-0"
           style={{ width: widths.checkbox, minWidth: widths.checkbox }}
         >
           <div className="flex h-12 items-center justify-center px-2">
@@ -37,7 +37,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('id') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.id, minWidth: widths.id }}
         >
           <div className="h-3 w-14 rounded skeleton-shimmer" />
@@ -45,7 +45,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('subject') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.subject, minWidth: widths.subject }}
         >
           <div className="h-3 w-40 rounded skeleton-shimmer" />
@@ -53,7 +53,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('status') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.status, minWidth: widths.status }}
         >
           <div className="h-5 w-16 rounded-full skeleton-shimmer" />
@@ -61,7 +61,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('priority') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.priority, minWidth: widths.priority }}
         >
           <div className="h-3 w-8 rounded skeleton-shimmer" />
@@ -69,7 +69,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('team') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.team, minWidth: widths.team }}
         >
           <div className="h-3 w-20 rounded skeleton-shimmer" />
@@ -77,7 +77,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('assignee') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.assignee, minWidth: widths.assignee }}
         >
           <div className="h-3 w-24 rounded skeleton-shimmer" />
@@ -85,7 +85,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('requester') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.requester, minWidth: widths.requester }}
         >
           <div className="h-3 w-24 rounded skeleton-shimmer" />
@@ -93,7 +93,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('createdAt') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.createdAt, minWidth: widths.createdAt }}
         >
           <div className="h-3 w-16 rounded skeleton-shimmer" />
@@ -101,7 +101,7 @@ export function TableRowSkeleton({
       )}
       {visibleColumns.includes('slaStatus') && (
         <td
-          className="border-b border-slate-100 px-3 py-2"
+          className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.slaStatus, minWidth: widths.slaStatus }}
         >
           <div className="h-5 w-14 rounded-full skeleton-shimmer" />

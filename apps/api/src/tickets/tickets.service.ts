@@ -269,11 +269,42 @@ export class TicketsService {
         skip,
         take: pageSize,
         orderBy,
-        include: {
-          requester: true,
-          assignee: true,
-          assignedTeam: true,
-          category: true,
+        select: {
+          id: true,
+          number: true,
+          displayId: true,
+          subject: true,
+          status: true,
+          priority: true,
+          channel: true,
+          createdAt: true,
+          updatedAt: true,
+          resolvedAt: true,
+          closedAt: true,
+          completedAt: true,
+          dueAt: true,
+          firstResponseDueAt: true,
+          firstResponseAt: true,
+          slaPausedAt: true,
+          requester: {
+            select: { id: true, email: true, displayName: true },
+          },
+          assignee: {
+            select: { id: true, email: true, displayName: true },
+          },
+          assignedTeam: {
+            select: { id: true, name: true, assignmentStrategy: true },
+          },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              description: true,
+              isActive: true,
+              parentId: true,
+            },
+          },
         },
       }),
     ]);
@@ -295,47 +326,37 @@ export class TicketsService {
     open: number;
     unassigned: number;
   }> {
-    const accessFilter = this.buildAccessFilter(user);
-    const openFilter: Prisma.TicketWhereInput = {
-      status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+    const accessCondition = this.accessConditionSql(user, 't');
+    const rows = await this.prisma.$queryRaw<
+      { assignedToMe: bigint; triage: bigint; open: bigint; unassigned: bigint }[]
+    >`
+      SELECT
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."assigneeId" = ${user.id}
+          THEN 1 ELSE 0 END) AS "assignedToMe",
+        SUM(CASE
+          WHEN (t."status")::text = ${TicketStatus.NEW}
+            AND t."assigneeId" IS NULL
+          THEN 1 ELSE 0 END) AS "triage",
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+          THEN 1 ELSE 0 END) AS "open",
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."assigneeId" IS NULL
+          THEN 1 ELSE 0 END) AS "unassigned"
+      FROM "Ticket" t
+      WHERE ${accessCondition}
+    `;
+
+    const row = rows[0] ?? { assignedToMe: 0n, triage: 0n, open: 0n, unassigned: 0n };
+    return {
+      assignedToMe: Number(row.assignedToMe ?? 0),
+      triage: Number(row.triage ?? 0),
+      open: Number(row.open ?? 0),
+      unassigned: Number(row.unassigned ?? 0),
     };
-
-    const [assignedToMe, triage, openTotal, unassigned] = await Promise.all([
-      this.prisma.ticket.count({
-        where: {
-          AND: [
-            accessFilter,
-            openFilter,
-            { assigneeId: user.id },
-          ],
-        },
-      }),
-      this.prisma.ticket.count({
-        where: {
-          AND: [
-            accessFilter,
-            openFilter,
-            { status: TicketStatus.NEW, assigneeId: null },
-          ],
-        },
-      }),
-      this.prisma.ticket.count({
-        where: {
-          AND: [accessFilter, openFilter],
-        },
-      }),
-      this.prisma.ticket.count({
-        where: {
-          AND: [
-            accessFilter,
-            openFilter,
-            { assigneeId: null },
-          ],
-        },
-      }),
-    ]);
-
-    return { assignedToMe, triage, open: openTotal, unassigned };
   }
 
   async getMetrics(user: AuthUser): Promise<{
@@ -480,15 +501,6 @@ export class TicketsService {
           include: { uploadedBy: true },
           orderBy: { createdAt: 'asc' },
         },
-        messages: {
-          where:
-            user.role === UserRole.EMPLOYEE
-              ? { type: MessageType.PUBLIC }
-            : undefined,
-          orderBy: { createdAt: 'asc' },
-          include: { author: true },
-        },
-        events: { orderBy: { createdAt: 'asc' }, include: { createdBy: true } },
         customFieldValues: {
           include: { customField: true },
         },
@@ -503,7 +515,79 @@ export class TicketsService {
       throw new ForbiddenException('No access to this ticket');
     }
 
-    return ticket;
+    const { accessGrants, ...rest } = ticket;
+    return rest;
+  }
+
+  async listMessages(ticketId: string, user: AuthUser, take = 50, cursor?: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { accessGrants: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    const limit = Math.max(1, Math.min(100, take));
+    const where: Prisma.TicketMessageWhereInput = {
+      ticketId,
+      ...(user.role === UserRole.EMPLOYEE ? { type: MessageType.PUBLIC } : {}),
+    };
+
+    const messages = await this.prisma.ticketMessage.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { author: true },
+    });
+
+    const hasMore = messages.length > limit;
+    const page = hasMore ? messages.slice(0, limit) : messages;
+    const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null;
+
+    return {
+      data: page.reverse(),
+      nextCursor,
+    };
+  }
+
+  async listEvents(ticketId: string, user: AuthUser, take = 50, cursor?: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { accessGrants: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    const limit = Math.max(1, Math.min(100, take));
+    const events = await this.prisma.ticketEvent.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { createdBy: true },
+    });
+
+    const hasMore = events.length > limit;
+    const page = hasMore ? events.slice(0, limit) : events;
+    const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null;
+
+    return {
+      data: page.reverse(),
+      nextCursor,
+    };
   }
 
   async create(payload: CreateTicketDto, user: AuthUser) {

@@ -23,7 +23,8 @@
     "test:db:reset": "node scripts/reset-test-db.cjs",
     "prisma": "prisma",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "ts-node prisma/seed.ts"
   },

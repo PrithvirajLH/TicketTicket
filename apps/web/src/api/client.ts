@@ -123,11 +123,19 @@ export type CustomFieldValueRecord = {
 };
 
 export type TicketDetail = TicketRecord & {
-  messages: TicketMessage[];
-  events: TicketEvent[];
   followers: TicketFollower[];
   attachments: Attachment[];
   customFieldValues?: CustomFieldValueRecord[];
+};
+
+export type TicketMessagePage = {
+  data: TicketMessage[];
+  nextCursor?: string | null;
+};
+
+export type TicketEventPage = {
+  data: TicketEvent[];
+  nextCursor?: string | null;
 };
 
 export type TeamMember = {
@@ -419,6 +427,22 @@ export function setTicketCustomValues(
 
 export function fetchTicketById(id: string) {
   return apiFetch<TicketDetail>(`/tickets/${id}`);
+}
+
+export function fetchTicketMessages(id: string, params?: { cursor?: string; take?: number }) {
+  const query = new URLSearchParams();
+  if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.take) query.set('take', String(params.take));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<TicketMessagePage>(`/tickets/${id}/messages${suffix}`);
+}
+
+export function fetchTicketEvents(id: string, params?: { cursor?: string; take?: number }) {
+  const query = new URLSearchParams();
+  if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.take) query.set('take', String(params.take));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<TicketEventPage>(`/tickets/${id}/events${suffix}`);
 }
 
 export function fetchTicketFollowers(id: string) {

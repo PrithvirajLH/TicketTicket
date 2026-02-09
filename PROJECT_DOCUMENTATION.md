@@ -1,6 +1,7 @@
 # Codex Ticketing System — Project Documentation
 
 Complete reference for the Unified Ticketing System: architecture, APIs, UI, design, and implementation details.
+Canonical planning/status source: `docs/unified-status-and-backlog-2026-02-09.md`.
 
 ---
 
@@ -68,7 +69,8 @@ Complete reference for the Unified Ticketing System: architecture, APIs, UI, des
 │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │
 │  Controllers: tickets, teams, users, categories, routing-rules, slas,   │
 │               saved-views, canned-responses, custom-fields,              │
-│               notifications, reports, attachments, health                │
+│               notifications, reports, automation-rules, audit-log,       │
+│               attachments, health                                         │
 │  Services: business logic + PrismaService                                │
 └─────────────────────────────────────────────────────────────────────────┘
                                         │
@@ -88,8 +90,9 @@ Complete reference for the Unified Ticketing System: architecture, APIs, UI, des
 2. **API** applies `AuthGuard` globally (except `@Public()` routes). Guard resolves user from DB, attaches `AuthUser` to request (`id`, `email`, `role`, `teamId`, `teamRole`, `primaryTeamId`).
 3. **Controllers** use `@CurrentUser()` to get user; services enforce scope (requester sees own tickets, agents see team tickets, OWNER/TEAM_ADMIN/LEAD see admin/reports).
 4. **Reports** require `AdminGuard` (OWNER, TEAM_ADMIN, or LEAD).
-5. **Categories** create/update/delete require **OWNER** (enforced in `CategoriesService.ensureOwner`; no controller-level guard).
-6. **Teams** create requires **OWNER**; update/members require TEAM_ADMIN (primary team) or OWNER. List: TEAM_ADMIN sees only primary team.
+5. **Automation rules** and **Audit log** require `TeamAdminOrOwnerGuard` (OWNER or TEAM_ADMIN).
+6. **Categories** create/update/delete require **OWNER** (enforced in `CategoriesService.ensureOwner`; no controller-level guard).
+7. **Teams** create requires **OWNER**; update/members require TEAM_ADMIN (primary team) or OWNER. List: TEAM_ADMIN sees only primary team.
 
 ---
 
@@ -328,6 +331,31 @@ Complete reference for the Unified Ticketing System: architecture, APIs, UI, des
 | GET | `/api/reports/tickets-by-age` | same | Buckets (e.g. 0-24h, 1-7d). |
 | GET | `/api/reports/reopen-rate` | same | Reopen time series. |
 | GET | `/api/reports/tickets-by-category` | same | Count by category. |
+| GET | `/api/reports/team-summary` | same | Team totals (open/resolved/total). |
+| GET | `/api/reports/transfers` | same | Transfer volume trend. |
+
+---
+
+### 5.14 Automation Rules (TeamAdminOrOwnerGuard: OWNER, TEAM_ADMIN)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/automation-rules` | List rules (role-scoped). |
+| GET | `/api/automation-rules/:id` | Get one rule. |
+| GET | `/api/automation-rules/:id/executions` | List execution history (page/pageSize). |
+| POST | `/api/automation-rules` | Create rule (trigger, conditions, actions, priority, scope). |
+| PATCH | `/api/automation-rules/:id` | Update rule. |
+| DELETE | `/api/automation-rules/:id` | Delete rule. |
+| POST | `/api/automation-rules/:id/test` | Dry-run evaluate rule against `ticketId`. |
+
+---
+
+### 5.15 Audit Log (TeamAdminOrOwnerGuard: OWNER, TEAM_ADMIN)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/audit-log` | List ticket events with filters (dateFrom/dateTo/userId/type/search/page/pageSize). |
+| GET | `/api/audit-log/export` | Export filtered audit log as CSV. |
 
 ---
 
@@ -393,6 +421,8 @@ E2E seed adds: `requester@company.com`, `agent@company.com`, `lead@company.com`,
 | `/reports` | ReportsPage | TEAM_ADMIN, OWNER |
 | `/admin` | AdminPage (hub) | TEAM_ADMIN, OWNER |
 | `/routing` | RoutingRulesPage | TEAM_ADMIN, OWNER |
+| `/automation` | AutomationRulesPage | TEAM_ADMIN, OWNER |
+| `/audit-log` | AuditLogPage | TEAM_ADMIN, OWNER |
 | `/categories` | CategoriesPage | OWNER only |
 | `/custom-fields` | CustomFieldsAdminPage | TEAM_ADMIN, OWNER |
 | `*` | Redirect to `/dashboard` | — |
@@ -424,8 +454,10 @@ Badges: triage count, open count, assigned-to-me count, unassigned count (from `
 | **TeamPage** | List teams; members; add/update/remove members; update team. |
 | **SlaSettingsPage** | Per-team SLA policies (P1–P4 first response + resolution hours); reset to default. |
 | **ReportsPage** | Date/team/priority filters; charts: ticket volume, SLA compliance, resolution time, by status, by priority, agent performance, agent workload, tickets by age, reopen rate, by category. |
-| **AdminPage** | Links to Routing, Categories, Custom Fields. |
+| **AdminPage** | Links to Routing, Automation Rules, Audit Log, Categories, Custom Fields. |
 | **RoutingRulesPage** | CRUD routing rules (name, keywords, team, priority, active). |
+| **AutomationRulesPage** | CRUD automation rules (trigger, condition tree, actions, dry-run test, execution history). |
+| **AuditLogPage** | Filter/search/export ticket audit events. |
 | **CategoriesPage** | CRUD categories (name, slug, description, parent, active). |
 | **CustomFieldsAdminPage** | CRUD custom fields (name, type, options, required, team, category, sort). |
 
@@ -532,7 +564,7 @@ Badges: triage count, open count, assigned-to-me count, unassigned count (from `
 
 - SlaPolicy per team/priority (first response hours, resolution hours).  
 - SlaInstance per ticket; first response/resolution due and breach/at-risk tracking.  
-- SLA breach worker (BullMQ); at-risk notifications.  
+- SLA breach/at-risk worker (interval scanner with advisory lock); escalation notifications.  
 - UI: SLA settings page; SLA countdown and badges on tickets/dashboard.  
 
 ### 9.5 Saved Views & Canned Responses
@@ -561,6 +593,18 @@ Badges: triage count, open count, assigned-to-me count, unassigned count (from `
 
 - Client-side search: tickets (API list with `q`), users and teams (cached); categorized results; recent searches; create ticket action.  
 - No dedicated `/api/search`; web uses existing list + cache.  
+
+### 9.10 Automation Rules
+
+- Rule model with trigger + condition tree + actions + execution log.
+- Triggered on ticket create/status change and SLA at-risk/breach events.
+- Admin UI supports create/update/delete, dry-run test, and execution visibility.
+
+### 9.11 Audit Log
+
+- Audit log API over `TicketEvent` with filters and pagination.
+- CSV export endpoint and admin UI for search/filter/export.
+- Scope enforcement for OWNER/TEAM_ADMIN.
 
 ---
 
@@ -627,9 +671,10 @@ Badges: triage count, open count, assigned-to-me count, unassigned count (from `
 | Document | Description |
 |----------|-------------|
 | `README.md` | Quick start, stack, auth headers, seeded users. |
+| `docs/unified-status-and-backlog-2026-02-09.md` | Canonical delivery snapshot: sprint status, performance baseline, pending work, and sprint backlog. |
 | `docs/requirements.md` | Baseline scope, functional/non-functional requirements. |
 | `docs/roles-permissions.md` | Roles, permissions matrix, OWNER/TEAM_ADMIN migration. |
-| `docs/slas.md` | SLA types, paused states, priority placeholders, business hours. |
+| `docs/slas.md` | Current SLA implementation (policies, instances, breach/at-risk) and remaining gaps. |
 | `docs/wireframes.md` | Low-fidelity wireframes (dashboard, tickets, ticket detail). |
 | `docs/ui-ux-improvements.md` | Task list for command palette, shortcuts, notifications, etc. |
 | `docs/zendesk-gap-implementation.md` | Phased plan for email inbound, macros, triggers, SLA, tags, KB. |

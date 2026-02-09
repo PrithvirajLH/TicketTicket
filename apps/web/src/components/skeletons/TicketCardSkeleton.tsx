@@ -14,13 +14,13 @@ export function TicketCardSkeleton({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3',
+        'flex items-center gap-3 w-full rounded-2xl border border-border bg-card px-4 py-3',
         className
       )}
       aria-hidden
     >
       {showCheckbox && (
-        <div className="h-4 w-4 flex-shrink-0 rounded border border-slate-200 skeleton-shimmer" />
+        <div className="h-4 w-4 flex-shrink-0 rounded border border-border skeleton-shimmer" />
       )}
       <div className="flex-1 flex items-center justify-between min-w-0 text-left">
         <div className="min-w-0 space-y-1">

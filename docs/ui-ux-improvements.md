@@ -2,7 +2,8 @@
 
 > A comprehensive task list to transform the Codex Ticketing System into an enterprise-grade, user-friendly application.
 
-**Status (updated 2026-02-05):** Phase 1 complete. Phase 2 tasks 2.1–2.5 complete; 2.6 (Related/Linked Tickets) pending. Phase 3 tasks 3.1 (Custom Fields), 3.2 (Reporting), and 3.3 (Automation Rules) complete; 3.4 (Audit Log page) pending. Phase 4 (Polish & Accessibility) pending.
+**Status (updated 2026-02-09):** Phase 1 complete. Phase 2 tasks 2.1-2.5 complete; 2.6 (Related/Linked Tickets) pending. Phase 3 tasks 3.1 (Custom Fields), 3.2 (Reporting), 3.3 (Automation Rules), and 3.4 (Audit Log page) complete. Phase 4 (Polish & Accessibility) pending.
+Canonical planning/status source: `docs/unified-status-and-backlog-2026-02-09.md`.
 
 ---
 
@@ -63,21 +64,18 @@ Add a keyboard-accessible command palette (similar to VS Code's Ctrl+Shift+P or 
 apps/web/src/components/CommandPalette.tsx (new)
 apps/web/src/hooks/useCommandPalette.ts (new)
 apps/web/src/App.tsx (add keyboard listener)
-apps/api/src/search/search.controller.ts (new - unified search endpoint)
-apps/api/src/search/search.service.ts (new)
-apps/api/src/search/search.module.ts (new)
+apps/web/src/api/client.ts (update search behavior to use existing ticket/user/team endpoints)
 ```
 
-#### API Endpoint
+#### API Endpoint / Data Source
 
 ```typescript
-GET /api/search?q={query}&types=tickets,users,teams
-Response: {
-  tickets: TicketRecord[],
-  users: UserRecord[],
-  teams: TeamRecord[],
-  pages: PageResult[]
-}
+No dedicated /api/search endpoint in current implementation.
+Command palette uses:
+- GET /api/tickets?q=...
+- GET /api/users
+- GET /api/teams
+with client-side grouping/caching for fast lookup.
 ```
 
 #### Acceptance Criteria
@@ -1076,7 +1074,7 @@ Build a comprehensive reporting dashboard with charts and exportable data.
 #### Files to Create/Modify
 
 ```
-apps/web/src/pages/ReportsPage.tsx (replace placeholder)
+apps/web/src/pages/ReportsPage.tsx (implemented reports dashboard)
 apps/web/src/components/reports/TicketVolumeChart.tsx (new)
 apps/web/src/components/reports/SlaComplianceChart.tsx (new)
 apps/web/src/components/reports/ResolutionTimeChart.tsx (new)
@@ -1267,12 +1265,12 @@ apps/api/src/audit/audit.interceptor.ts (new - auto-log requests)
 
 #### Acceptance Criteria
 
-- [ ] All ticket changes are logged
-- [ ] Audit log page shows history
-- [ ] Can filter by user, action, date
-- [ ] Can search audit logs
-- [ ] Can export to CSV
-- [ ] Logs include before/after values for changes
+- [x] All ticket changes are logged
+- [x] Audit log page shows history
+- [x] Can filter by user, action, date
+- [x] Can search audit logs
+- [x] Can export to CSV
+- [x] Logs include before/after values for changes
 
 ---
 
@@ -1397,11 +1395,11 @@ apps/web/src/pages/*.tsx (add empty/error states)
 
 #### Acceptance Criteria
 
-- [ ] Empty states show helpful message and CTA
-- [ ] Error states show retry option
-- [ ] Consistent styling across all empty states
-- [ ] 404 page exists and is styled
-- [ ] Network errors show friendly message
+- [x] Empty states show helpful message and CTA
+- [x] Error states show retry option
+- [x] Consistent styling across all empty states
+- [x] 404 page exists and is styled
+- [x] Network errors show friendly message
 
 ---
 
@@ -1439,10 +1437,10 @@ apps/web/src/pages/*.tsx (ensure skeletons used everywhere)
 
 #### Acceptance Criteria
 
-- [ ] All data-loading areas show skeletons
-- [ ] Skeletons match content dimensions
-- [ ] Shimmer animation works
-- [ ] No layout shift when content loads
+- [x] All data-loading areas show skeletons
+- [x] Skeletons match content dimensions
+- [x] Shimmer animation works
+- [x] No layout shift when content loads
 
 ---
 
@@ -1490,12 +1488,12 @@ apps/web/src/App.tsx (add ToastContainer)
 
 #### Acceptance Criteria
 
-- [ ] Toast function available throughout app
-- [ ] Different styles for success/error/warning/info
-- [ ] Toasts auto-dismiss after timeout
-- [ ] Can manually dismiss toasts
-- [ ] Multiple toasts stack properly
-- [ ] Screen readers announce toast messages
+- [x] Toast function available throughout app
+- [x] Different styles for success/error/warning/info
+- [x] Toasts auto-dismiss after timeout
+- [x] Can manually dismiss toasts
+- [x] Multiple toasts stack properly
+- [x] Screen readers announce toast messages
 
 ---
 
@@ -1601,4 +1599,4 @@ Task 3.3 (Automation) → Can build on existing routing rules
 ---
 
 *Document created: January 29, 2026*  
-*Last updated: February 5, 2026 — Phase 1 and completed Phase 2/3 tasks marked done.*
+*Last updated: February 9, 2026 - status reconciled with implemented Phase 2/3 tasks.*

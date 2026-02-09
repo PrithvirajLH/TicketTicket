@@ -66,33 +66,33 @@ export function FilterPanel({
   }));
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-visible">
+    <div className="rounded-xl border border-border bg-card shadow-soft overflow-visible">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
+        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-slate-500" />
-          <span className="text-sm font-semibold text-slate-800">Filters</span>
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold text-foreground">Filters</span>
           {hasActiveFilters && (
-            <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
+            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
               Active
             </span>
           )}
         </div>
-        <ChevronDown className={`h-4 w-4 text-slate-400 transition ${expanded ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition ${expanded ? 'rotate-180' : ''}`} />
       </button>
 
       {expanded && (
-        <div className="border-t border-slate-100 px-4 pb-4">
+        <div className="border-t border-border px-4 pb-4">
           <div className="flex items-center justify-between pt-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Filter by</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter by</span>
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={clearFilters}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted/30 transition-colors"
               >
                 <X className="h-3 w-3" />
                 Clear all
@@ -167,7 +167,7 @@ export function FilterPanel({
                 value={filters.q}
                 onChange={(e) => setFilters({ q: e.target.value })}
                 placeholder="Subject or description…"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring/30"
               />
             </div>
             <SavedViewsDropdown

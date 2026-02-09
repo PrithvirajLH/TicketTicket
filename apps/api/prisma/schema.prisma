@@ -214,6 +214,13 @@ model Ticket {
   notifications  Notification[]
   customFieldValues CustomFieldValue[]
   automationExecutions AutomationExecution[]
+
+  @@index([status, updatedAt])
+  @@index([assignedTeamId, status, updatedAt])
+  @@index([assigneeId, status, updatedAt])
+  @@index([requesterId, createdAt])
+  @@index([dueAt])
+  @@index([completedAt])
 }
 
 model CustomField {
@@ -261,6 +268,8 @@ model TicketMessage {
 
   ticket    Ticket      @relation(fields: [ticketId], references: [id])
   author    User        @relation(fields: [authorId], references: [id])
+
+  @@index([ticketId, createdAt])
 }
 
 model TicketEvent {
@@ -273,6 +282,8 @@ model TicketEvent {
 
   ticket      Ticket   @relation(fields: [ticketId], references: [id])
   createdBy   User?    @relation(fields: [createdById], references: [id])
+
+  @@index([ticketId, createdAt])
 }
 
 model TicketAccess {
@@ -394,6 +405,7 @@ model Attachment {
   uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
 
   @@index([ticketId])
+  @@index([ticketId, createdAt])
   @@index([uploadedById])
   @@index([scanStatus])
 }

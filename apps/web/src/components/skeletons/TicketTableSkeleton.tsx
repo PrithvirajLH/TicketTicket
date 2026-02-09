@@ -33,13 +33,14 @@ export function TicketTableSkeleton({
   const visibleColumns = TABLE_COLUMN_IDS.filter((id) => columnVisibility[id]);
 
   return (
-    <div className="mt-4 w-full max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white/80">
-      <table className="w-full min-w-[600px] border-collapse text-sm">
-        <thead className="sticky top-0 z-[1]">
-          <tr className="border-b border-slate-200 bg-slate-50">
+    <div className="w-full max-w-full min-w-0 rounded-xl border border-border bg-card shadow-soft overflow-hidden">
+      <div className="w-full max-w-full min-w-0 overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
+          <thead className="sticky top-0 z-[1]">
+            <tr className="border-b border-border bg-muted/20">
             {showCheckbox && visibleColumns.includes('checkbox') && (
               <th
-                className="sticky left-0 z-[2] border-b border-r border-slate-200 bg-slate-50 p-0 text-left"
+                className="sticky left-0 z-[2] border-b border-r border-border bg-muted/20 p-0 text-left"
                 style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }}
               >
                 <div className="flex h-10 items-center justify-center px-2">
@@ -53,26 +54,27 @@ export function TicketTableSkeleton({
               return (
                 <th
                   key={colId}
-                  className="border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-left font-semibold text-slate-700"
+                  className="border-b border-border bg-muted/20 px-3 py-2.5 text-left font-semibold text-foreground"
                   style={{ width, minWidth: width }}
                 >
                   {COLUMN_LABELS[colId]}
                 </th>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: rowCount }).map((_, index) => (
-            <TableRowSkeleton
-              key={index}
-              showCheckbox={showCheckbox}
-              columnVisibility={columnVisibility}
-              columnWidths={columnWidths}
-            />
-          ))}
-        </tbody>
-      </table>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: rowCount }).map((_, index) => (
+              <TableRowSkeleton
+                key={index}
+                showCheckbox={showCheckbox}
+                columnVisibility={columnVisibility}
+                columnWidths={columnWidths}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

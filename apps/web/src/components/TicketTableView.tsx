@@ -122,9 +122,9 @@ export function TicketTableView({
   const showCheckbox = role !== 'EMPLOYEE';
 
   return (
-    <div className="mt-4 w-full max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white/80">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/80 px-3 py-2">
-        <span className="text-sm text-slate-500" aria-live="polite">
+    <div className="w-full max-w-full min-w-0 rounded-xl border border-border bg-card shadow-soft overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-3">
+        <span className="text-sm text-muted-foreground" aria-live="polite">
           {sortStatusLabel(sortField, sortOrder)}
         </span>
         <div className="relative" ref={popoverRef}>
@@ -132,7 +132,7 @@ export function TicketTableView({
             ref={columnsButtonRef}
             type="button"
             onClick={() => setColumnsOpen((o) => !o)}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
           >
             <Columns3 className="h-4 w-4" />
             Columns
@@ -145,17 +145,17 @@ export function TicketTableView({
                 aria-hidden
                 onClick={() => setColumnsOpen(false)}
               />
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-slate-200 bg-white py-2 shadow-lg">
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-border bg-popover py-2 shadow-elevated">
                 {TABLE_COLUMN_IDS.filter((id) => id !== 'checkbox').map((id) => (
                   <label
                     key={id}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50"
+                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/30 transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={columnVisibility[id]}
                       onChange={(e) => setColumnVisible(id, e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-slate-900"
+                      className="h-4 w-4 rounded border-input text-primary"
                     />
                     {COLUMN_LABELS[id]}
                   </label>
@@ -166,12 +166,13 @@ export function TicketTableView({
         </div>
       </div>
 
-      <table className="w-full min-w-[600px] border-collapse text-sm">
-        <thead className="sticky top-0 z-[1]">
-          <tr className="border-b border-slate-200 bg-slate-50">
+      <div className="w-full max-w-full min-w-0 overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
+          <thead className="sticky top-0 z-[1]">
+            <tr className="border-b border-border bg-muted/20">
             {showCheckbox && visibleColumns.includes('checkbox') && (
               <th
-                className="sticky left-0 z-[2] border-b border-r border-slate-200 bg-slate-50 p-0 text-left"
+                className="sticky left-0 z-[2] border-b border-r border-border bg-muted/20 p-0 text-left"
                 style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }}
               >
                 <div className="flex h-10 items-center justify-center px-2">
@@ -180,7 +181,7 @@ export function TicketTableView({
                     checked={selection.isAllSelected}
                     onChange={selection.toggleAll}
                     onClick={(e) => e.stopPropagation()}
-                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                    className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
                     aria-label="Select all"
                   />
                 </div>
@@ -194,36 +195,36 @@ export function TicketTableView({
               return (
                 <th
                   key={colId}
-                  className="relative border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-left font-semibold text-slate-700"
+                  className="relative border-b border-border bg-muted/20 px-3 py-2.5 text-left font-semibold text-foreground"
                   style={{ width, minWidth: width }}
                 >
                   <button
                     type="button"
                     onClick={() => isSortable && handleSortClick(colId as SortField)}
-                    className={`flex w-full items-center gap-1 text-left ${isSortable ? 'cursor-pointer hover:text-slate-900' : 'cursor-default'}`}
+                    className={`flex w-full items-center gap-1 text-left ${isSortable ? 'cursor-pointer hover:text-foreground' : 'cursor-default'}`}
                   >
                     {COLUMN_LABELS[colId]}
                     {isSortable && isActiveSort && (
                       sortOrder === 'desc' ? (
-                        <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                       ) : (
-                        <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />
+                        <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                       )
                     )}
                   </button>
                   <div
                     role="separator"
                     onMouseDown={(e) => handleResizeStart(colId, e)}
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-slate-300/50"
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-muted-foreground/10"
                     aria-label={`Resize ${COLUMN_LABELS[colId]} column`}
                   />
                 </th>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>
-          {tickets.map((ticket) => {
+            </tr>
+          </thead>
+          <tbody>
+            {tickets.map((ticket) => {
             const sla = getSlaTone({
               dueAt: ticket.dueAt,
               completedAt: ticket.completedAt,
@@ -234,11 +235,11 @@ export function TicketTableView({
               <tr
                 key={ticket.id}
                 onClick={() => onRowClick(ticket)}
-                className="border-b border-slate-100 transition hover:bg-slate-50/80 cursor-pointer"
+                className="group border-b border-border/60 transition-colors hover:bg-muted/30 cursor-pointer"
               >
                 {showCheckbox && visibleColumns.includes('checkbox') && (
                   <td
-                    className="sticky left-0 z-[2] border-b border-r border-slate-100 bg-white p-0"
+                    className="sticky left-0 z-[2] border-b border-r border-border/60 bg-card p-0 group-hover:bg-muted/30"
                     style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -248,7 +249,7 @@ export function TicketTableView({
                         checked={selection.isSelected(ticket.id)}
                         onChange={() => selection.toggle(ticket.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                        className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
                         aria-label={`Select ${ticket.subject}`}
                       />
                     </div>
@@ -256,7 +257,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('id') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 font-mono text-xs text-slate-600"
+                    className="border-b border-border/60 px-3 py-2 font-mono text-xs text-primary"
                     style={{ width: columnWidths.id, minWidth: columnWidths.id }}
                   >
                     {formatTicketId(ticket)}
@@ -264,7 +265,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('subject') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 text-slate-900"
+                    className="border-b border-border/60 px-3 py-2 text-foreground"
                     style={{ width: columnWidths.subject, minWidth: columnWidths.subject }}
                     title={ticket.subject}
                   >
@@ -273,7 +274,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('status') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2"
+                    className="border-b border-border/60 px-3 py-2"
                     style={{ width: columnWidths.status, minWidth: columnWidths.status }}
                   >
                     <span
@@ -285,7 +286,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('priority') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 text-slate-600"
+                    className="border-b border-border/60 px-3 py-2 text-muted-foreground"
                     style={{ width: columnWidths.priority, minWidth: columnWidths.priority }}
                   >
                     {ticket.priority}
@@ -293,7 +294,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('team') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 text-slate-600 truncate"
+                    className="border-b border-border/60 px-3 py-2 text-muted-foreground truncate"
                     style={{ width: columnWidths.team, minWidth: columnWidths.team }}
                     title={ticket.assignedTeam?.name ?? '—'}
                   >
@@ -302,7 +303,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('assignee') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 text-slate-600 truncate"
+                    className="border-b border-border/60 px-3 py-2 text-muted-foreground truncate"
                     style={{ width: columnWidths.assignee, minWidth: columnWidths.assignee }}
                     title={ticket.assignee?.displayName ?? ticket.assignee?.email ?? '—'}
                   >
@@ -311,7 +312,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('requester') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 text-slate-600 truncate"
+                    className="border-b border-border/60 px-3 py-2 text-muted-foreground truncate"
                     style={{ width: columnWidths.requester, minWidth: columnWidths.requester }}
                     title={ticket.requester?.displayName ?? ticket.requester?.email ?? '—'}
                   >
@@ -320,7 +321,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('createdAt') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2 text-slate-500"
+                    className="border-b border-border/60 px-3 py-2 text-muted-foreground"
                     style={{ width: columnWidths.createdAt, minWidth: columnWidths.createdAt }}
                   >
                     <RelativeTime value={ticket.createdAt} />
@@ -328,7 +329,7 @@ export function TicketTableView({
                 )}
                 {visibleColumns.includes('slaStatus') && (
                   <td
-                    className="border-b border-slate-100 px-3 py-2"
+                    className="border-b border-border/60 px-3 py-2"
                     style={{ width: columnWidths.slaStatus, minWidth: columnWidths.slaStatus }}
                   >
                     <span
@@ -340,9 +341,10 @@ export function TicketTableView({
                 )}
               </tr>
             );
-          })}
-        </tbody>
-      </table>
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

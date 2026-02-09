@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ArrowUpDown, ChevronLeft, ChevronRight, Filter, Plus, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   bulkAssignTickets,
@@ -263,9 +263,20 @@ export function TicketsPage({
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [focusedTicketIndex]);
 
+  const title =
+    role === 'EMPLOYEE'
+      ? 'Your tickets'
+      : filters.scope === 'created'
+        ? 'Created by me'
+        : 'Team tickets';
+
+  const totalCount = listMeta?.total ?? filteredTickets.length;
+  const totalCountLabel = `${totalCount} ticket${totalCount === 1 ? '' : 's'}`;
+
   return (
-    <section className="mt-8 min-w-0 space-y-6 animate-fade-in">
-      <div className="glass-card min-w-0 p-6">
+    <section className="mt-8 min-w-0 animate-fade-in">
+      <div className="mx-auto max-w-[1600px] min-w-0">
+        <div className="min-w-0 rounded-2xl border border-border bg-card p-8 shadow-card">
         {selection.isSomeSelected && role !== 'EMPLOYEE' && (
           <BulkActionsToolbar
             selectedCount={selection.selectedCount}
@@ -284,31 +295,34 @@ export function TicketsPage({
           />
         )}
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                {role === 'EMPLOYEE' ? 'Your tickets' : filters.scope === 'created' ? 'Created by me' : 'Team tickets'}
-              </h3>
-              <p className="text-sm text-slate-500">
-                Filter and search tickets.
-                {refreshingTickets ? <span className="ml-2 text-xs text-slate-400">Refreshing…</span> : null}
-              </p>
+        <div className="flex flex-col gap-6">
+          <div>
+            <h3 className="text-xl font-semibold text-foreground">{title}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Filter and search tickets.
+              {refreshingTickets ? (
+                <span className="ml-2 text-xs text-muted-foreground">Refreshing…</span>
+              ) : null}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative flex-1 min-w-[280px] max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="w-full pl-10 pr-4 h-11 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+                placeholder="Search subject or description…"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
-                <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  className="pl-9 pr-4 py-2 rounded-full border border-slate-200 bg-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  placeholder="Search subject or description"
-                  value={searchDraft}
-                  onChange={(event) => setSearchDraft(event.target.value)}
-                />
-              </div>
+
+            <div className="relative">
+              <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
               <select
-                className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+                className="h-11 rounded-xl border border-border bg-background pl-10 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
                 value={filters.sort}
                 onChange={(event) => setFilters({ sort: event.target.value as typeof filters.sort })}
               >
@@ -316,8 +330,12 @@ export function TicketsPage({
                 <option value="updatedAt">Sort by updated</option>
                 <option value="completedAt">Sort by completion</option>
               </select>
+            </div>
+
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
               <select
-                className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+                className="h-11 rounded-xl border border-border bg-background pl-10 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
                 value={filters.statusGroup ?? 'open'}
                 onChange={(event) => setFilters({ statusGroup: event.target.value as StatusFilter })}
               >
@@ -325,11 +343,22 @@ export function TicketsPage({
                 <option value="resolved">Resolved</option>
                 <option value="all">All</option>
               </select>
-              <ViewToggle
-                value={tableSettings.viewMode}
-                onChange={tableSettings.setViewMode}
-              />
             </div>
+
+            <ViewToggle value={tableSettings.viewMode} onChange={tableSettings.setViewMode} />
+
+            {onCreateTicket && (
+              <button
+                type="button"
+                onClick={onCreateTicket}
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ring/30 focus:ring-offset-1 transition-opacity"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Create ticket
+              </button>
+            )}
+
+            <span className="ml-auto text-sm text-muted-foreground">{totalCountLabel}</span>
           </div>
 
           {role !== 'EMPLOYEE' && (
@@ -348,10 +377,9 @@ export function TicketsPage({
               onError={(msg) => toast.error(msg)}
             />
           )}
-        </div>
 
         {ticketError && (
-          <div className="mt-4">
+          <div>
             <ErrorState
               title="Unable to load tickets"
               description={ticketError}
@@ -362,14 +390,14 @@ export function TicketsPage({
         )}
 
         {hasActiveFilters && role !== 'EMPLOYEE' && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {filters.statuses.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/20 px-3 py-1 text-xs font-medium text-foreground">
                 Status: {filters.statuses.map(formatStatus).join(', ')}
                 <button
                   type="button"
                   onClick={() => setFilters({ statuses: [] })}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200"
+                  className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted/40"
                   aria-label="Clear status"
                 >
                   ×
@@ -377,30 +405,51 @@ export function TicketsPage({
               </span>
             )}
             {filters.priorities.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/20 px-3 py-1 text-xs font-medium text-foreground">
                 Priority: {filters.priorities.join(', ')}
-                <button type="button" onClick={() => setFilters({ priorities: [] })} className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200" aria-label="Clear priority">×</button>
+                <button
+                  type="button"
+                  onClick={() => setFilters({ priorities: [] })}
+                  className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted/40"
+                  aria-label="Clear priority"
+                >
+                  ×
+                </button>
               </span>
             )}
             {filters.teamIds.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/20 px-3 py-1 text-xs font-medium text-foreground">
                 Team: {filters.teamIds.length} selected
-                <button type="button" onClick={() => setFilters({ teamIds: [] })} className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200" aria-label="Clear team">×</button>
+                <button
+                  type="button"
+                  onClick={() => setFilters({ teamIds: [] })}
+                  className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted/40"
+                  aria-label="Clear team"
+                >
+                  ×
+                </button>
               </span>
             )}
             {filters.slaStatus.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/20 px-3 py-1 text-xs font-medium text-foreground">
                 SLA: {filters.slaStatus.join(', ')}
-                <button type="button" onClick={() => setFilters({ slaStatus: [] })} className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200" aria-label="Clear SLA">×</button>
+                <button
+                  type="button"
+                  onClick={() => setFilters({ slaStatus: [] })}
+                  className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted/40"
+                  aria-label="Clear SLA"
+                >
+                  ×
+                </button>
               </span>
             )}
             {(filters.createdFrom || filters.createdTo || filters.updatedFrom || filters.updatedTo || filters.dueFrom || filters.dueTo) && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/20 px-3 py-1 text-xs font-medium text-foreground">
                 Date range
                 <button
                   type="button"
                   onClick={() => setFilters({ createdFrom: '', createdTo: '', updatedFrom: '', updatedTo: '', dueFrom: '', dueTo: '' })}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200"
+                  className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-muted/40"
                   aria-label="Clear dates"
                 >
                   ×
@@ -411,7 +460,7 @@ export function TicketsPage({
         )}
 
         {loadingTickets && tableSettings.viewMode === 'grid' && (
-          <div className="mt-4 space-y-3">
+          <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, index) => (
               <TicketCardSkeleton
                 key={`ticket-skeleton-${index}`}
@@ -429,28 +478,26 @@ export function TicketsPage({
           />
         )}
         {!loadingTickets && !ticketError && filteredTickets.length === 0 && (
-          <div className="mt-4">
-            <EmptyState
-              title="No tickets found"
-              description="Try adjusting your filters or create a new ticket to get started."
-              primaryAction={
-                onCreateTicket ? { label: 'Create Ticket', onClick: onCreateTicket } : undefined
-              }
-              secondaryAction={
-                hasActiveFilters ? { label: 'Clear filters', onClick: clearFilters } : undefined
-              }
-            />
-          </div>
+          <EmptyState
+            title="No tickets found"
+            description="Try adjusting your filters or create a new ticket to get started."
+            primaryAction={
+              onCreateTicket ? { label: 'Create Ticket', onClick: onCreateTicket } : undefined
+            }
+            secondaryAction={
+              hasActiveFilters ? { label: 'Clear filters', onClick: clearFilters } : undefined
+            }
+          />
         )}
 
         {!loadingTickets && filteredTickets.length > 0 && role !== 'EMPLOYEE' && tableSettings.viewMode === 'grid' && (
-          <div className="mt-4 flex items-center gap-3 px-1">
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+          <div className="flex items-center gap-3 px-1">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
               <input
                 type="checkbox"
                 checked={selection.isAllSelected}
                 onChange={selection.toggleAll}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
               />
               Select all
             </label>
@@ -479,7 +526,7 @@ export function TicketsPage({
         )}
 
         {!loadingTickets && tableSettings.viewMode === 'grid' && filteredTickets.length > 0 && (
-          <div className="mt-4 space-y-3">
+          <div className="space-y-3">
             {filteredTickets.map((ticket, index) => (
               <div
                 key={ticket.id}
@@ -488,10 +535,10 @@ export function TicketsPage({
                 }}
                 tabIndex={0}
                 role="button"
-                className={`flex items-center gap-3 w-full rounded-2xl border px-4 py-3 transition hover:shadow-soft group outline-none ${
+                className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 transition hover:shadow-soft outline-none ${
                   index === focusedTicketIndex
-                    ? 'border-slate-900 ring-2 ring-slate-900 ring-offset-2 bg-white shadow-md'
-                    : 'border-slate-200 bg-white/80'
+                    ? 'border-primary ring-2 ring-ring/30 ring-offset-2 bg-card shadow-elevated'
+                    : 'border-border bg-card'
                 }`}
                 onClick={() => navigate(`/tickets/${ticket.id}`)}
                 onKeyDown={(e) => {
@@ -513,7 +560,7 @@ export function TicketsPage({
                       checked={selection.isSelected(ticket.id)}
                       onChange={() => selection.toggle(ticket.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                      className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
                     />
                   </label>
                 )}
@@ -521,8 +568,8 @@ export function TicketsPage({
                   className="flex-1 flex items-center justify-between text-left min-w-0"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{ticket.subject}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <p className="text-sm font-semibold text-foreground truncate">{ticket.subject}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span>{ticket.assignedTeam?.name ?? 'Unassigned'}</span>
                       {(() => {
                         const sla = getSlaTone({
@@ -547,7 +594,7 @@ export function TicketsPage({
                     >
                       {formatStatus(ticket.status)}
                     </span>
-                    <RelativeTime value={ticket.createdAt} className="text-xs text-slate-400" />
+                    <RelativeTime value={ticket.createdAt} className="text-xs text-muted-foreground" />
                   </div>
                 </div>
               </div>
@@ -556,8 +603,8 @@ export function TicketsPage({
         )}
 
         {!loadingTickets && listMeta && listMeta.total > 0 && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-            <p className="text-sm text-slate-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+            <p className="text-sm text-muted-foreground">
               Showing {(listMeta.page - 1) * listMeta.pageSize + 1}–{Math.min(listMeta.page * listMeta.pageSize, listMeta.total)} of {listMeta.total} tickets
             </p>
             <div className="flex items-center gap-2">
@@ -565,19 +612,19 @@ export function TicketsPage({
                 type="button"
                 disabled={listMeta.page <= 1}
                 onClick={() => setFilters({ page: listMeta.page - 1 })}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50 disabled:pointer-events-none transition-colors"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Previous
               </button>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-muted-foreground">
                 Page {listMeta.page} of {listMeta.totalPages}
               </span>
               <button
                 type="button"
                 disabled={listMeta.page >= listMeta.totalPages}
                 onClick={() => setFilters({ page: listMeta.page + 1 })}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50 disabled:pointer-events-none transition-colors"
               >
                 Next
                 <ChevronRight className="h-4 w-4" />
@@ -585,7 +632,9 @@ export function TicketsPage({
             </div>
           </div>
         )}
+        </div>
       </div>
+    </div>
     </section>
   );
 }

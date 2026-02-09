@@ -38,14 +38,14 @@ export function MultiSelectFilter({
   }
 
   return (
-    <div className="border-b border-slate-100 py-3">
+    <div className="border-b border-border/60 py-3">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between text-left text-sm font-semibold text-slate-700"
+        className="flex w-full items-center justify-between text-left text-sm font-semibold text-foreground"
       >
         {label}
-        <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="mt-2 space-y-2">
@@ -55,22 +55,22 @@ export function MultiSelectFilter({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
-              className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring/30"
             />
           )}
           <div className="max-h-40 overflow-y-auto space-y-1">
             {filteredOptions.map((opt) => (
               <label
                 key={opt.value}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-slate-50"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/30 transition-colors"
               >
                 <input
                   type="checkbox"
                   checked={selected.includes(opt.value)}
                   onChange={() => toggle(opt.value)}
-                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
                 />
-                <span className="text-xs text-slate-700">{opt.label}</span>
+                <span className="text-xs text-foreground">{opt.label}</span>
               </label>
             ))}
           </div>
@@ -102,27 +102,27 @@ export function CheckboxGroupFilter({
   }
 
   return (
-    <div className="border-b border-slate-100 py-3">
+    <div className="border-b border-border/60 py-3">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between text-left text-sm font-semibold text-slate-700"
+        className="flex w-full items-center justify-between text-left text-sm font-semibold text-foreground"
       >
         {label}
-        <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="mt-2 flex flex-wrap gap-2">
           {options.map((opt) => (
             <label
               key={opt.value}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/30 transition-colors"
             >
               <input
                 type="checkbox"
                 checked={selected.includes(opt.value)}
                 onChange={() => toggle(opt.value)}
-                className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900/10"
+                className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-ring/30"
               />
               {opt.label}
             </label>
