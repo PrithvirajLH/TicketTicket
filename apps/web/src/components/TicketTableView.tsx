@@ -1,40 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Columns3 } from 'lucide-react';
 import type { TicketRecord } from '../api/client';
-import type {
-  TableColumnId,
-  TableSettings,
-} from '../hooks/useTableSettings';
-import { TABLE_COLUMN_IDS } from '../hooks/useTableSettings';
 import { RelativeTime } from './RelativeTime';
 import { formatStatus, formatTicketId, getSlaTone, statusBadgeClass } from '../utils/format';
-import type { SortField, SortOrder } from '../types';
 
-const COLUMN_LABELS: Record<TableColumnId, string> = {
-  checkbox: '',
-  id: 'ID',
-  subject: 'Subject',
-  status: 'Status',
-  priority: 'Priority',
-  team: 'Team',
-  assignee: 'Assignee',
-  requester: 'Requester',
-  createdAt: 'Created',
-  slaStatus: 'SLA',
-};
+function priorityBadgeClass(priority?: string | null) {
+  switch (priority) {
+    case 'P1':
+      return 'border-amber-200 bg-amber-50 text-amber-800';
+    case 'P2':
+      return 'border-blue-200 bg-blue-50 text-blue-800';
+    case 'P3':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-800';
+    case 'P4':
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+  }
+}
 
-const SORTABLE_COLUMNS: SortField[] = ['createdAt', 'updatedAt', 'completedAt'];
+function initialsFromUser(name?: string | null, email?: string | null) {
+  const source = (name && name.trim()) || (email && email.trim()) || '?';
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+}
 
-const SORT_FIELD_LABELS: Record<SortField, string> = {
-  createdAt: 'Created',
-  updatedAt: 'Updated',
-  completedAt: 'Completed',
-};
-
-function sortStatusLabel(field: SortField, order: SortOrder): string {
-  const name = SORT_FIELD_LABELS[field];
-  const direction = order === 'desc' ? 'newest first' : 'oldest first';
-  return `Sorted by: ${name} (${direction})`;
+function Avatar({ name, email }: { name?: string | null; email?: string | null }) {
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted/30 text-[11px] font-semibold text-foreground">
+      {initialsFromUser(name, email)}
+    </span>
+  );
 }
 
 type TicketTableViewProps = {
@@ -46,13 +43,6 @@ type TicketTableViewProps = {
     toggleAll: () => void;
     isAllSelected: boolean;
   };
-  columnWidths: TableSettings['columnWidths'];
-  columnVisibility: TableSettings['columnVisibility'];
-  setColumnWidth: (id: TableColumnId, width: number) => void;
-  setColumnVisible: (id: TableColumnId, visible: boolean) => void;
-  sortField: SortField;
-  sortOrder: SortOrder;
-  onSortChange: (field: SortField, order: SortOrder) => void;
   onRowClick: (ticket: TicketRecord) => void;
 };
 
@@ -60,287 +50,121 @@ export function TicketTableView({
   tickets,
   role,
   selection,
-  columnWidths,
-  columnVisibility,
-  setColumnWidth,
-  setColumnVisible,
-  sortField,
-  sortOrder,
-  onSortChange,
   onRowClick,
 }: TicketTableViewProps) {
-  const [resizing, setResizing] = useState<{ columnId: TableColumnId; startX: number; startWidth: number } | null>(null);
-  const [columnsOpen, setColumnsOpen] = useState(false);
-  const columnsButtonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  const visibleColumns = TABLE_COLUMN_IDS.filter((id) => columnVisibility[id]);
-
-  const handleResizeStart = useCallback(
-    (columnId: TableColumnId, e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setResizing({ columnId, startX: e.clientX, startWidth: columnWidths[columnId] });
-    },
-    [columnWidths]
-  );
-
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!resizing) return;
-      const delta = e.clientX - resizing.startX;
-      const newWidth = Math.max(60, Math.min(400, resizing.startWidth + delta));
-      setColumnWidth(resizing.columnId, newWidth);
-    },
-    [resizing, setColumnWidth]
-  );
-
-  const handleMouseUp = useCallback(() => {
-    setResizing(null);
-  }, []);
-
-  useEffect(() => {
-    if (!resizing) return;
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [resizing, handleMouseMove, handleMouseUp]);
-
-  const handleSortClick = useCallback(
-    (field: SortField) => {
-      if (!SORTABLE_COLUMNS.includes(field)) return;
-      const nextOrder =
-        sortField === field && sortOrder === 'desc' ? 'asc' : 'desc';
-      onSortChange(field, nextOrder);
-    },
-    [sortField, sortOrder, onSortChange]
-  );
-
   const showCheckbox = role !== 'EMPLOYEE';
 
   return (
-    <div className="w-full max-w-full min-w-0 rounded-xl border border-border bg-card shadow-soft overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-3">
-        <span className="text-sm text-muted-foreground" aria-live="polite">
-          {sortStatusLabel(sortField, sortOrder)}
-        </span>
-        <div className="relative" ref={popoverRef}>
-          <button
-            ref={columnsButtonRef}
-            type="button"
-            onClick={() => setColumnsOpen((o) => !o)}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
-          >
-            <Columns3 className="h-4 w-4" />
-            Columns
-            <ChevronDown className={`h-4 w-4 transition ${columnsOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {columnsOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-10"
-                aria-hidden
-                onClick={() => setColumnsOpen(false)}
-              />
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-border bg-popover py-2 shadow-elevated">
-                {TABLE_COLUMN_IDS.filter((id) => id !== 'checkbox').map((id) => (
-                  <label
-                    key={id}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/30 transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={columnVisibility[id]}
-                      onChange={(e) => setColumnVisible(id, e.target.checked)}
-                      className="h-4 w-4 rounded border-input text-primary"
-                    />
-                    {COLUMN_LABELS[id]}
-                  </label>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="w-full max-w-full min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
-          <thead className="sticky top-0 z-[1]">
-            <tr className="border-b border-border bg-muted/20">
-            {showCheckbox && visibleColumns.includes('checkbox') && (
-              <th
-                className="sticky left-0 z-[2] border-b border-r border-border bg-muted/20 p-0 text-left"
-                style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }}
-              >
-                <div className="flex h-10 items-center justify-center px-2">
+    <div className="w-full overflow-hidden rounded-2xl border border-border bg-card shadow-soft">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] border-collapse">
+          <thead>
+            <tr className="border-b border-border bg-muted/20 text-left text-sm font-semibold text-foreground">
+              {showCheckbox ? (
+                <th className="w-10 px-3 py-3">
                   <input
                     type="checkbox"
                     checked={selection.isAllSelected}
                     onChange={selection.toggleAll}
-                    onClick={(e) => e.stopPropagation()}
                     className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
-                    aria-label="Select all"
-                  />
-                </div>
-              </th>
-            )}
-            {visibleColumns.map((colId) => {
-              if (colId === 'checkbox') return null;
-              const width = columnWidths[colId];
-              const isSortable = SORTABLE_COLUMNS.includes(colId as SortField);
-              const isActiveSort = sortField === colId;
-              return (
-                <th
-                  key={colId}
-                  className="relative border-b border-border bg-muted/20 px-3 py-2.5 text-left font-semibold text-foreground"
-                  style={{ width, minWidth: width }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => isSortable && handleSortClick(colId as SortField)}
-                    className={`flex w-full items-center gap-1 text-left ${isSortable ? 'cursor-pointer hover:text-foreground' : 'cursor-default'}`}
-                  >
-                    {COLUMN_LABELS[colId]}
-                    {isSortable && isActiveSort && (
-                      sortOrder === 'desc' ? (
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                      ) : (
-                        <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                      )
-                    )}
-                  </button>
-                  <div
-                    role="separator"
-                    onMouseDown={(e) => handleResizeStart(colId, e)}
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-muted-foreground/10"
-                    aria-label={`Resize ${COLUMN_LABELS[colId]} column`}
+                    aria-label="Select all tickets"
                   />
                 </th>
-              );
-            })}
+              ) : null}
+              <th className="w-28 px-3 py-3">ID</th>
+              <th className="px-3 py-3">Ticket</th>
+              <th className="w-[220px] px-3 py-3">Requester</th>
+              <th className="w-28 px-3 py-3">Priority</th>
+              <th className="w-40 px-3 py-3">Status</th>
+              <th className="w-[240px] px-3 py-3">Assignee</th>
+              <th className="w-36 px-3 py-3">Created</th>
             </tr>
           </thead>
           <tbody>
-            {tickets.map((ticket) => {
-            const sla = getSlaTone({
-              dueAt: ticket.dueAt,
-              completedAt: ticket.completedAt,
-              status: ticket.status,
-              slaPausedAt: ticket.slaPausedAt,
-            });
-            return (
-              <tr
-                key={ticket.id}
-                onClick={() => onRowClick(ticket)}
-                className="group border-b border-border/60 transition-colors hover:bg-muted/30 cursor-pointer"
-              >
-                {showCheckbox && visibleColumns.includes('checkbox') && (
-                  <td
-                    className="sticky left-0 z-[2] border-b border-r border-border/60 bg-card p-0 group-hover:bg-muted/30"
-                    style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex h-12 items-center justify-center px-2">
+            {tickets.map((ticket, index) => {
+              const sla = getSlaTone({
+                dueAt: ticket.dueAt,
+                completedAt: ticket.completedAt,
+                status: ticket.status,
+                slaPausedAt: ticket.slaPausedAt,
+              });
+              const requesterName = ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown';
+              const requesterEmail = ticket.requester?.email ?? 'No email';
+              const assigneeName = ticket.assignee?.displayName ?? ticket.assignee?.email ?? 'Unassigned';
+              const assigneeEmail = ticket.assignee?.email ?? '';
+              const assigneeTeam = ticket.assignedTeam?.name ?? 'No team';
+              const category = ticket.category?.name ?? 'No category';
+              return (
+                <tr
+                  key={ticket.id}
+                  onClick={() => onRowClick(ticket)}
+                  className={`cursor-pointer border-b border-border/70 text-sm transition-colors hover:bg-muted/20 ${
+                    index % 2 === 0 ? 'bg-background' : 'bg-muted/[0.08]'
+                  }`}
+                >
+                  {showCheckbox ? (
+                    <td
+                      className="px-3 py-3 align-top"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         checked={selection.isSelected(ticket.id)}
                         onChange={() => selection.toggle(ticket.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
-                        aria-label={`Select ${ticket.subject}`}
+                        className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-ring/30"
+                        aria-label={`Select ticket ${ticket.subject}`}
                       />
+                    </td>
+                  ) : null}
+                  <td className="px-3 py-3 align-top">
+                    <span className="font-mono text-lg leading-none text-slate-600">
+                      {formatTicketId(ticket)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 align-top">
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold leading-tight text-foreground">{ticket.subject}</p>
+                      <p className="mt-1 truncate text-sm text-muted-foreground">{category}</p>
                     </div>
                   </td>
-                )}
-                {visibleColumns.includes('id') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 font-mono text-xs text-primary"
-                    style={{ width: columnWidths.id, minWidth: columnWidths.id }}
-                  >
-                    {formatTicketId(ticket)}
+                  <td className="px-3 py-3 align-top">
+                    <div className="flex items-start gap-2">
+                      <Avatar name={requesterName} email={requesterEmail} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium leading-tight text-foreground">{requesterName}</p>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">{requesterEmail}</p>
+                      </div>
+                    </div>
                   </td>
-                )}
-                {visibleColumns.includes('subject') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 text-foreground"
-                    style={{ width: columnWidths.subject, minWidth: columnWidths.subject }}
-                    title={ticket.subject}
-                  >
-                    <span className="block truncate">{ticket.subject}</span>
+                  <td className="px-3 py-3 align-top">
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}>
+                      {ticket.priority ?? 'P3'}
+                    </span>
                   </td>
-                )}
-                {visibleColumns.includes('status') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2"
-                    style={{ width: columnWidths.status, minWidth: columnWidths.status }}
-                  >
+                  <td className="px-3 py-3 align-top">
                     <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${statusBadgeClass(ticket.status)}`}
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}
                     >
                       {formatStatus(ticket.status)}
                     </span>
+                    {sla.label !== 'On track' ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{sla.label}</p>
+                    ) : null}
                   </td>
-                )}
-                {visibleColumns.includes('priority') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 text-muted-foreground"
-                    style={{ width: columnWidths.priority, minWidth: columnWidths.priority }}
-                  >
-                    {ticket.priority}
+                  <td className="px-3 py-3 align-top">
+                    <div className="flex items-start gap-2">
+                      <Avatar name={assigneeName} email={assigneeEmail} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium leading-tight text-foreground">{assigneeName}</p>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">{assigneeTeam}</p>
+                      </div>
+                    </div>
                   </td>
-                )}
-                {visibleColumns.includes('team') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 text-muted-foreground truncate"
-                    style={{ width: columnWidths.team, minWidth: columnWidths.team }}
-                    title={ticket.assignedTeam?.name ?? '—'}
-                  >
-                    {ticket.assignedTeam?.name ?? '—'}
-                  </td>
-                )}
-                {visibleColumns.includes('assignee') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 text-muted-foreground truncate"
-                    style={{ width: columnWidths.assignee, minWidth: columnWidths.assignee }}
-                    title={ticket.assignee?.displayName ?? ticket.assignee?.email ?? '—'}
-                  >
-                    {ticket.assignee?.displayName ?? ticket.assignee?.email ?? '—'}
-                  </td>
-                )}
-                {visibleColumns.includes('requester') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 text-muted-foreground truncate"
-                    style={{ width: columnWidths.requester, minWidth: columnWidths.requester }}
-                    title={ticket.requester?.displayName ?? ticket.requester?.email ?? '—'}
-                  >
-                    {ticket.requester?.displayName ?? ticket.requester?.email ?? '—'}
-                  </td>
-                )}
-                {visibleColumns.includes('createdAt') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2 text-muted-foreground"
-                    style={{ width: columnWidths.createdAt, minWidth: columnWidths.createdAt }}
-                  >
+                  <td className="px-3 py-3 align-top text-muted-foreground">
                     <RelativeTime value={ticket.createdAt} />
                   </td>
-                )}
-                {visibleColumns.includes('slaStatus') && (
-                  <td
-                    className="border-b border-border/60 px-3 py-2"
-                    style={{ width: columnWidths.slaStatus, minWidth: columnWidths.slaStatus }}
-                  >
-                    <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sla.className}`}
-                    >
-                      {sla.label}
-                    </span>
-                  </td>
-                )}
-              </tr>
-            );
+                </tr>
+              );
             })}
           </tbody>
         </table>

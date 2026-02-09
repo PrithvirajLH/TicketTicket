@@ -495,10 +495,10 @@ function App() {
 
         <main
           className={`flex-1 px-10 transition-all duration-300 h-screen overflow-y-auto ${
-            location.pathname === '/dashboard' ? 'py-0' : 'py-8'
+            location.pathname === '/dashboard' || location.pathname === '/tickets' ? 'py-0' : 'py-8'
           } ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}
         >
-          {location.pathname !== '/dashboard' && (
+          {location.pathname !== '/dashboard' && location.pathname !== '/tickets' && (
             <TopBar
               title={viewTitle}
               subtitle={viewSubtitle}
@@ -673,6 +673,24 @@ function App() {
                   refreshKey={refreshKey}
                   teamsList={teamsList}
                   onCreateTicket={() => setShowCreateModal(true)}
+                  headerProps={{
+                    title: viewTitle,
+                    subtitle: viewSubtitle,
+                    currentEmail,
+                    personas,
+                    onEmailChange: setCurrentEmail,
+                    onOpenSearch: commandPalette.open,
+                    notificationProps: {
+                      notifications: notifications.notifications,
+                      unreadCount: notifications.unreadCount,
+                      loading: notifications.loading,
+                      hasMore: notifications.hasMore,
+                      onLoadMore: notifications.loadMore,
+                      onMarkAsRead: notifications.markAsRead,
+                      onMarkAllAsRead: notifications.markAllAsRead,
+                      onRefresh: notifications.refresh
+                    }
+                  }}
                 />
               }
             />

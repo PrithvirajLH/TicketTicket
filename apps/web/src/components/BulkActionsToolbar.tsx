@@ -144,36 +144,40 @@ export function BulkActionsToolbar({
   }
 
   return (
-    <div className="sticky top-0 z-10 -mx-8 -mt-8 mb-6 rounded-xl border border-border bg-card/95 px-8 py-4 backdrop-blur-md shadow-soft">
+    <div className="rounded-xl border border-border bg-muted/[0.12] p-3">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-foreground">
+        <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Bulk actions
+        </span>
+        <span className="text-sm font-semibold text-foreground">
           {selectedCount} ticket{selectedCount === 1 ? '' : 's'} selected
         </span>
+        {loading ? (
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+            Processing...
+          </span>
+        ) : null}
+      </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {/* Assign to me */}
         <button
           type="button"
           onClick={() => handleBulkAssign()}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/30 disabled:opacity-50"
         >
           <UserPlus className="h-4 w-4" />
           Assign to me
         </button>
 
         {/* Assign to user */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
           <select
             value={assignToId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setAssignToId(id);
-              if (id) {
-                handleBulkAssign(id);
-              }
-            }}
+            onChange={(e) => setAssignToId(e.target.value)}
             disabled={loading || assignableUsers.length === 0}
-            className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
+            className="rounded-md bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
           >
             <option value="">Assign to…</option>
             {assignableUsers.map((user) => (
@@ -182,15 +186,23 @@ export function BulkActionsToolbar({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => handleBulkAssign(assignToId || undefined)}
+            disabled={loading || !assignToId}
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Apply
+          </button>
         </div>
 
         {/* Status */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
           <select
             value={statusValue}
             onChange={(e) => setStatusValue(e.target.value)}
             disabled={loading}
-            className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
+            className="rounded-md bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
           >
             <option value="">Status…</option>
             {STATUS_OPTIONS.map((status) => (
@@ -203,19 +215,19 @@ export function BulkActionsToolbar({
             type="button"
             onClick={() => handleBulkStatus()}
             disabled={loading || !statusValue}
-            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             Apply
           </button>
         </div>
 
         {/* Priority */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
           <select
             value={priorityValue}
             onChange={(e) => setPriorityValue(e.target.value)}
             disabled={loading}
-            className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
+            className="rounded-md bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
           >
             <option value="">Priority…</option>
             {PRIORITY_OPTIONS.map((p) => (
@@ -228,19 +240,19 @@ export function BulkActionsToolbar({
             type="button"
             onClick={() => handleBulkPriority()}
             disabled={loading || !priorityValue}
-            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             Apply
           </button>
         </div>
 
         {/* Transfer */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
           <select
             value={transferTeamId}
             onChange={(e) => setTransferTeamId(e.target.value)}
             disabled={loading}
-            className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
+            className="rounded-md bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
           >
             <option value="">Transfer to team…</option>
             {teamsList.map((team) => (
@@ -249,11 +261,24 @@ export function BulkActionsToolbar({
               </option>
             ))}
           </select>
+          <select
+            value={transferAssigneeId}
+            onChange={(e) => setTransferAssigneeId(e.target.value)}
+            disabled={loading}
+            className="rounded-md bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-50"
+          >
+            <option value="">Assignee (optional)…</option>
+            {assignableUsers.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.displayName}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             onClick={() => handleBulkTransfer()}
             disabled={loading || !transferTeamId}
-            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             Transfer
           </button>
@@ -265,7 +290,7 @@ export function BulkActionsToolbar({
         <button
           type="button"
           onClick={onClearSelection}
-          className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted/30 transition-colors"
+          className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
         >
           <X className="h-4 w-4" />
           Clear
