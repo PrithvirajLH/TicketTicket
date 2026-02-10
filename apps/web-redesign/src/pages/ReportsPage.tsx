@@ -256,7 +256,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: bool
         onChange={(event) => onChange(event.target.checked)}
         className="peer sr-only"
       />
-      <span className="absolute inset-0 cursor-pointer rounded-full bg-gray-300 transition peer-checked:bg-blue-600" />
+      <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600" />
       <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
     </label>
   );
@@ -281,16 +281,16 @@ function StatCard({
     amber: { bg: 'bg-amber-50', icon: 'text-amber-600', ring: 'ring-amber-200' },
     red: { bg: 'bg-red-50', icon: 'text-red-600', ring: 'ring-red-200' },
     purple: { bg: 'bg-purple-50', icon: 'text-purple-600', ring: 'ring-purple-200' },
-    gray: { bg: 'bg-gray-50', icon: 'text-gray-600', ring: 'ring-gray-200' }
+    gray: { bg: 'bg-slate-50', icon: 'text-slate-600', ring: 'ring-slate-200' }
   };
   const palette = toneMap[tone] ?? toneMap.blue;
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium text-gray-500">{label}</p>
+          <p className="text-xs font-medium text-slate-500">{label}</p>
           <p className={`mt-1 text-2xl font-bold ${palette.icon}`}>{value}</p>
-          {sub ? <p className="mt-1 text-xs text-gray-500">{sub}</p> : null}
+          {sub ? <p className="mt-1 text-xs text-slate-500">{sub}</p> : null}
         </div>
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${palette.bg} ${palette.ring}`}>
           <svg className={`h-5 w-5 ${palette.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -365,9 +365,9 @@ function Donut({ value, label, sub }: { value: number; label: string; sub: strin
         </g>
       </svg>
       <div>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-xl font-bold text-gray-900">{toPercent(clamped)}</p>
-        <p className="text-xs text-gray-400">{sub}</p>
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-xl font-bold text-slate-900">{toPercent(clamped)}</p>
+        <p className="text-xs text-slate-400">{sub}</p>
       </div>
     </div>
   );
@@ -385,11 +385,11 @@ function CardShell({
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
         <div>
-          <p className="text-sm font-semibold text-gray-900">{title}</p>
-          {sub ? <p className="mt-0.5 text-xs text-gray-500">{sub}</p> : null}
+          <p className="text-sm font-semibold text-slate-900">{title}</p>
+          {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
         </div>
         {right}
       </div>
@@ -400,7 +400,7 @@ function CardShell({
 
 function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
   return (
-    <span className="inline-flex items-center space-x-2 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+    <span className="inline-flex items-center space-x-2 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
       <span>{label}</span>
       {onRemove ? (
         <button type="button" onClick={onRemove} className="opacity-70 hover:opacity-100">
@@ -779,8 +779,8 @@ export function ReportsPage({
   const exportScopeLabel = `${rangeLabel} - ${scopeLabel}`;
 
   return (
-    <section className="min-h-full bg-gray-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+    <section className="min-h-full bg-slate-50 animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-[1600px] py-4 pl-6 pr-2">
           {headerProps ? (
             <TopBar
@@ -793,15 +793,15 @@ export function ReportsPage({
               notificationProps={headerProps.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
-                  <p className="mt-0.5 text-sm text-gray-500">Analytics and insights for your helpdesk.</p>
+                  <h1 className="text-xl font-semibold text-slate-900">Reports</h1>
+                  <p className="mt-0.5 text-sm text-slate-500">Analytics and insights for your helpdesk.</p>
                 </div>
               }
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
-              <p className="mt-0.5 text-sm text-gray-500">Analytics and insights for your helpdesk.</p>
+              <h1 className="text-xl font-semibold text-slate-900">Reports</h1>
+              <p className="mt-0.5 text-sm text-slate-500">Analytics and insights for your helpdesk.</p>
             </div>
           )}
         </div>
@@ -815,13 +815,13 @@ export function ReportsPage({
         ) : null}
 
         <div className="max-w-[560px]">
-          <div className="rounded-xl border border-gray-200 bg-white p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Saved views</p>
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Saved views</p>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={activeView}
                 onChange={(event) => applyView(event.target.value)}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 {savedViews.map((view) => (
                   <option key={view.id} value={view.id}>
@@ -836,7 +836,7 @@ export function ReportsPage({
                 className={`rounded-lg px-3 py-2 text-sm font-medium ${
                   canSaveViews
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'cursor-not-allowed border border-gray-300 bg-gray-100 text-gray-400'
+                    : 'cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-400'
                 }`}
               >
                 Save current
@@ -844,23 +844,23 @@ export function ReportsPage({
               <button
                 type="button"
                 onClick={resetFilters}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Reset
               </button>
             </div>
-            <p className="mt-2 text-xs text-gray-400">{savedViews.find((view) => view.id === activeView)?.desc}</p>
+            <p className="mt-2 text-xs text-slate-400">{savedViews.find((view) => view.id === activeView)?.desc}</p>
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Date range</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Date range</label>
               <select
                 value={filters.range}
                 onChange={(event) => setFilters((prev) => ({ ...prev, range: event.target.value as RangeKey }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="last_7">Last 7 days</option>
                 <option value="last_14">Last 14 days</option>
@@ -869,11 +869,11 @@ export function ReportsPage({
               </select>
             </div>
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Team</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Team</label>
               <select
                 value={filters.teamId}
                 onChange={(event) => setFilters((prev) => ({ ...prev, teamId: event.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All teams</option>
                 {teams.map((team) => (
@@ -884,11 +884,11 @@ export function ReportsPage({
               </select>
             </div>
             <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Channel</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Channel</label>
               <select
                 value={filters.channel}
                 onChange={(event) => setFilters((prev) => ({ ...prev, channel: event.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All channels</option>
                 {CHANNELS.map((channel) => (
@@ -899,11 +899,11 @@ export function ReportsPage({
               </select>
             </div>
             <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Status</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
               <select
                 value={filters.status}
                 onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All status</option>
                 {STATUSES.map((status) => (
@@ -914,13 +914,13 @@ export function ReportsPage({
               </select>
             </div>
             <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Priority</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Priority</label>
               <select
                 value={filters.priority}
                 onChange={(event) =>
                   setFilters((prev) => ({ ...prev, priority: event.target.value as PriorityFilter }))
                 }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All priority</option>
                 <option value="critical">critical</option>
@@ -930,11 +930,11 @@ export function ReportsPage({
               </select>
             </div>
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Assignee</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">Assignee</label>
               <select
                 value={filters.assignee}
                 onChange={(event) => setFilters((prev) => ({ ...prev, assignee: event.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All assignees</option>
                 {agentRows.map((row) => (
@@ -949,12 +949,12 @@ export function ReportsPage({
                 checked={filters.compare}
                 onChange={(next) => setFilters((prev) => ({ ...prev, compare: next }))}
               />
-              <span className="text-sm text-gray-700">Compare</span>
+              <span className="text-sm text-slate-700">Compare</span>
             </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <p className="mr-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Tags</p>
+            <p className="mr-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Tags</p>
             {TAGS.map((tag) => (
               <button
                 key={tag}
@@ -963,7 +963,7 @@ export function ReportsPage({
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
                   filters.tags.includes(tag)
                     ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
                 {tag}
@@ -972,8 +972,8 @@ export function ReportsPage({
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white px-4 pt-3">
-          <div className="flex flex-wrap gap-6 border-b border-gray-200">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 pt-3">
+          <div className="flex flex-wrap gap-6 border-b border-slate-200">
             {[
               ['overview', 'Overview'],
               ['sla', 'SLA'],
@@ -988,7 +988,7 @@ export function ReportsPage({
                 type="button"
                 onClick={() => setTab(id as ReportsTab)}
                 className={`pb-3 text-sm font-medium transition-all ${
-                  tab === id ? 'border-b-2 border-blue-600 text-blue-600' : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
+                  tab === id ? 'border-b-2 border-blue-600 text-blue-600' : 'border-b-2 border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
                 {label}
@@ -998,7 +998,7 @@ export function ReportsPage({
 
           <div className="py-5">
             {loading ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
                 Loading report data...
               </div>
             ) : null}
@@ -1041,35 +1041,35 @@ export function ReportsPage({
                     <CardShell
                       title="Volume vs solved"
                       sub="Daily trend. Compare uses current UI state."
-                      right={<span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">Daily</span>}
+                      right={<span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Daily</span>}
                     >
                       <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-gray-800">Inbound</p>
-                            <span className="text-xs text-gray-500">{inboundSeries.length} pts</span>
+                            <p className="text-sm font-semibold text-slate-800">Inbound</p>
+                            <span className="text-xs text-slate-500">{inboundSeries.length} pts</span>
                           </div>
                           <div className="text-blue-600">
                             <MiniBars points={inboundSeries} />
                           </div>
                           <div className="mt-3 flex items-center justify-between text-xs">
-                            <span className="text-gray-500">Avg/day</span>
-                            <span className="font-semibold text-gray-700">
+                            <span className="text-slate-500">Avg/day</span>
+                            <span className="font-semibold text-slate-700">
                               {Math.round(inboundSeries.reduce((sum, point) => sum + point, 0) / inboundSeries.length)}
                             </span>
                           </div>
                         </div>
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-gray-800">Solved</p>
-                            <span className="text-xs text-gray-500">{solvedSeriesSafe.length} pts</span>
+                            <p className="text-sm font-semibold text-slate-800">Solved</p>
+                            <span className="text-xs text-slate-500">{solvedSeriesSafe.length} pts</span>
                           </div>
                           <div className="text-green-600">
                             <MiniBars points={solvedSeriesSafe} />
                           </div>
                           <div className="mt-3 flex items-center justify-between text-xs">
-                            <span className="text-gray-500">Avg/day</span>
-                            <span className="font-semibold text-gray-700">
+                            <span className="text-slate-500">Avg/day</span>
+                            <span className="font-semibold text-slate-700">
                               {Math.round(
                                 solvedSeriesSafe.reduce((sum, point) => sum + point, 0) / solvedSeriesSafe.length
                               )}
@@ -1093,12 +1093,12 @@ export function ReportsPage({
                           <Donut value={kpis.resSla} label="Resolution" sub="Compliance" />
                         </div>
                       </div>
-                      <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                        <p className="text-xs text-gray-500">At-risk tickets (est.)</p>
-                        <p className="mt-1 text-xl font-bold text-gray-900">
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs text-slate-500">At-risk tickets (est.)</p>
+                        <p className="mt-1 text-xl font-bold text-slate-900">
                           {Math.max(0, Math.round((kpis.backlog * (100 - kpis.resSla)) / 100))}
                         </p>
-                        <p className="mt-1 text-xs text-gray-400">Based on active backlog and current SLA trends.</p>
+                        <p className="mt-1 text-xs text-slate-400">Based on active backlog and current SLA trends.</p>
                       </div>
                     </CardShell>
 
@@ -1108,14 +1108,14 @@ export function ReportsPage({
                     >
                       <div className="space-y-2">
                         {topCategories.map((category) => (
-                          <div key={category.name} className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-gray-50">
+                          <div key={category.name} className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-slate-50">
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-gray-800">{category.name}</p>
-                              <p className="text-xs text-gray-400">
+                              <p className="truncate text-sm font-medium text-slate-800">{category.name}</p>
+                              <p className="text-xs text-slate-400">
                                 Trend: {category.trend > 0 ? `+${category.trend}%` : `${category.trend}%`}
                               </p>
                             </div>
-                            <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">{category.count}</span>
+                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{category.count}</span>
                           </div>
                         ))}
                       </div>
@@ -1128,28 +1128,28 @@ export function ReportsPage({
             {tab === 'sla' ? (
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs text-gray-500">First response SLA</p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs text-slate-500">First response SLA</p>
                     <p className={`mt-1 text-3xl font-bold ${toneForMetric(kpis.frSla, 95)}`}>{kpis.frSla.toFixed(1)}%</p>
-                    <p className="mt-1 text-xs text-gray-400">Target 95%</p>
+                    <p className="mt-1 text-xs text-slate-400">Target 95%</p>
                     <div className="mt-3 text-blue-600">
                       <SparkArea points={sources.summary ? inboundSeries.slice(-12) : DEMO_SERIES.frSla} />
                     </div>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs text-gray-500">Resolution SLA</p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs text-slate-500">Resolution SLA</p>
                     <p className={`mt-1 text-3xl font-bold ${toneForMetric(kpis.resSla, 92)}`}>{kpis.resSla.toFixed(1)}%</p>
-                    <p className="mt-1 text-xs text-gray-400">Target 92%</p>
+                    <p className="mt-1 text-xs text-slate-400">Target 92%</p>
                     <div className="mt-3 text-indigo-600">
                       <SparkArea points={sources.summary ? solvedSeriesSafe.slice(-12) : DEMO_SERIES.resSla} />
                     </div>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs text-gray-500">Breaches</p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs text-slate-500">Breaches</p>
                     <p className="mt-1 text-3xl font-bold text-red-600">
                       {slaData ? slaData.firstResponseBreached + slaData.resolutionBreached : 23}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">In current scope</p>
+                    <p className="mt-1 text-xs text-slate-400">In current scope</p>
                     <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3">
                       <p className="text-xs font-medium text-red-700">Top driver</p>
                       <p className="mt-1 text-sm font-semibold text-red-800">Queue overload</p>
@@ -1161,28 +1161,28 @@ export function ReportsPage({
                 <CardShell title="Worst SLA breaches" sub="Tickets with highest breach duration.">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="border-b border-gray-200 bg-gray-50">
+                      <thead className="border-b border-slate-200 bg-slate-50">
                         <tr>
                           {['Ticket', 'Team', 'Priority', 'Stage', 'Breach by', 'Reason'].map((heading) => (
-                            <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                               {heading}
                             </th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody className="divide-y divide-slate-100">
                         {DEMO_WORST_BREACHES.map((row) => (
-                          <tr key={row.ticket} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-semibold text-gray-900">{row.ticket}</td>
-                            <td className="px-4 py-3 text-gray-700">{row.team}</td>
+                          <tr key={row.ticket} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-semibold text-slate-900">{row.ticket}</td>
+                            <td className="px-4 py-3 text-slate-700">{row.team}</td>
                             <td className="px-4 py-3">
-                              <span className={`rounded-md px-2 py-1 text-xs font-medium ${PRIORITY_BADGES[row.priority]}`}>
+                              <span className={`rounded-lg px-2 py-1 text-xs font-medium ${PRIORITY_BADGES[row.priority]}`}>
                                 {row.priority}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-gray-700">{row.stage}</td>
+                            <td className="px-4 py-3 text-slate-700">{row.stage}</td>
                             <td className="px-4 py-3 font-semibold text-red-600">{row.breachBy}</td>
-                            <td className="px-4 py-3 text-gray-600">{row.reason}</td>
+                            <td className="px-4 py-3 text-slate-600">{row.reason}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1198,23 +1198,23 @@ export function ReportsPage({
                   <div className="lg:col-span-8">
                     <CardShell title="Inbound vs solved vs backlog" sub="Daily trend">
                       <div className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                          <p className="text-sm font-semibold text-gray-800">Inbound</p>
-                          <p className="mb-2 text-xs text-gray-400">Tickets/day</p>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-sm font-semibold text-slate-800">Inbound</p>
+                          <p className="mb-2 text-xs text-slate-400">Tickets/day</p>
                           <div className="text-blue-600">
                             <MiniBars points={inboundSeries} />
                           </div>
                         </div>
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                          <p className="text-sm font-semibold text-gray-800">Solved</p>
-                          <p className="mb-2 text-xs text-gray-400">Tickets/day</p>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-sm font-semibold text-slate-800">Solved</p>
+                          <p className="mb-2 text-xs text-slate-400">Tickets/day</p>
                           <div className="text-green-600">
                             <MiniBars points={solvedSeriesSafe} />
                           </div>
                         </div>
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                          <p className="text-sm font-semibold text-gray-800">Backlog</p>
-                          <p className="mb-2 text-xs text-gray-400">Open tickets</p>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-sm font-semibold text-slate-800">Backlog</p>
+                          <p className="mb-2 text-xs text-slate-400">Open tickets</p>
                           <div className="text-amber-600">
                             <MiniBars points={backlogSeriesSafe} />
                           </div>
@@ -1232,12 +1232,12 @@ export function ReportsPage({
                           { c: 'chat', v: 18 },
                           { c: 'phone', v: 8 }
                         ].map((row) => (
-                          <div key={row.c} className="rounded-lg px-3 py-2 hover:bg-gray-50">
+                          <div key={row.c} className="rounded-lg px-3 py-2 hover:bg-slate-50">
                             <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium text-gray-800">{row.c}</span>
-                              <span className="text-gray-600">{toPercent(row.v)}</span>
+                              <span className="font-medium text-slate-800">{row.c}</span>
+                              <span className="text-slate-600">{toPercent(row.v)}</span>
                             </div>
-                            <div className="mt-2 h-2 w-full rounded-full bg-gray-100">
+                            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
                               <div className="h-2 rounded-full bg-blue-600" style={{ width: `${row.v}%` }} />
                             </div>
                           </div>
@@ -1248,9 +1248,9 @@ export function ReportsPage({
                     <CardShell title="Peak days" sub="Highest inbound volume">
                       <div className="space-y-2">
                         {peakDays.map((row) => (
-                          <div key={`${row.d}-${row.v}`} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                            <span className="text-sm font-medium text-gray-700">{row.d}</span>
-                            <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">{row.v}</span>
+                          <div key={`${row.d}-${row.v}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <span className="text-sm font-medium text-slate-700">{row.d}</span>
+                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{row.v}</span>
                           </div>
                         ))}
                       </div>
@@ -1263,29 +1263,29 @@ export function ReportsPage({
             {tab === 'agents' ? (
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs text-gray-500">Avg handle time</p>
-                    <p className="mt-1 text-3xl font-bold text-gray-900">{kpis.avgHandleMin.toFixed(1)}m</p>
-                    <p className="mt-1 text-xs text-gray-400">Lower is better</p>
-                    <div className="mt-3 text-gray-700">
+                  <div className="rounded-xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs text-slate-500">Avg handle time</p>
+                    <p className="mt-1 text-3xl font-bold text-slate-900">{kpis.avgHandleMin.toFixed(1)}m</p>
+                    <p className="mt-1 text-xs text-slate-400">Lower is better</p>
+                    <div className="mt-3 text-slate-700">
                       <SparkArea points={inboundSeries.slice(-12)} />
                     </div>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs text-gray-500">Quality score</p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs text-slate-500">Quality score</p>
                     <p className="mt-1 text-3xl font-bold text-green-600">
                       {Math.max(0, Math.min(100, Math.round((kpis.resSla + kpis.frSla) / 2)))}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">Composite: SLA + reopen trend</p>
+                    <p className="mt-1 text-xs text-slate-400">Composite: SLA + reopen trend</p>
                     <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
                       <p className="text-xs text-green-700">Biggest win</p>
                       <p className="mt-1 text-sm font-semibold text-green-800">Faster triage</p>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs text-gray-500">Reopen rate</p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs text-slate-500">Reopen rate</p>
                     <p className="mt-1 text-3xl font-bold text-amber-600">{reopenRate.toFixed(1)}%</p>
-                    <p className="mt-1 text-xs text-gray-400">Target {'<='} 3%</p>
+                    <p className="mt-1 text-xs text-slate-400">Target {'<='} 3%</p>
                     <div className="mt-3 text-amber-600">
                       <SparkArea points={sources.reopenRate ? reopenData.map((item) => item.count) : [4, 3, 5, 4, 4, 5, 3, 4, 4, 5, 4, 4]} />
                     </div>
@@ -1295,24 +1295,24 @@ export function ReportsPage({
                 <CardShell title="Agent leaderboard" sub="Sorted by solved tickets.">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="border-b border-gray-200 bg-gray-50">
+                      <thead className="border-b border-slate-200 bg-slate-50">
                         <tr>
                           {['Agent', 'Team', 'Solved', 'FR SLA', 'RES SLA', 'CSAT'].map((heading) => (
-                            <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                               {heading}
                             </th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody className="divide-y divide-slate-100">
                         {[...agentRows]
                           .sort((a, b) => b.solved - a.solved)
                           .map((row) => (
-                            <tr key={row.name} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 font-semibold text-gray-900">{row.name}</td>
-                              <td className="px-4 py-3 text-gray-700">{row.team}</td>
+                            <tr key={row.name} className="hover:bg-slate-50">
+                              <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
+                              <td className="px-4 py-3 text-slate-700">{row.team}</td>
                               <td className="px-4 py-3">
-                                <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">{row.solved}</span>
+                                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{row.solved}</span>
                               </td>
                               <td className={`px-4 py-3 font-semibold ${row.fr >= 95 ? 'text-green-600' : row.fr >= 92 ? 'text-amber-600' : 'text-red-600'}`}>
                                 {toPercent(row.fr)}
@@ -1320,7 +1320,7 @@ export function ReportsPage({
                               <td className={`px-4 py-3 font-semibold ${row.res >= 92 ? 'text-green-600' : row.res >= 88 ? 'text-amber-600' : 'text-red-600'}`}>
                                 {toPercent(row.res)}
                               </td>
-                              <td className="px-4 py-3 font-semibold text-gray-900">{row.csat.toFixed(1)}</td>
+                              <td className="px-4 py-3 font-semibold text-slate-900">{row.csat.toFixed(1)}</td>
                             </tr>
                           ))}
                       </tbody>
@@ -1337,15 +1337,15 @@ export function ReportsPage({
                     <CardShell title="CSAT trend" sub="Average rating per day.">
                       <div className="mb-2 flex items-end justify-between">
                         <div>
-                          <p className="text-xs text-gray-500">Average</p>
+                          <p className="text-xs text-slate-500">Average</p>
                           <p className="mt-1 text-3xl font-bold text-purple-600">{DEMO_KPIS.csat.toFixed(2)}</p>
                         </div>
-                        <span className="rounded-md bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">Scale 1-5</span>
+                        <span className="rounded-lg bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">Scale 1-5</span>
                       </div>
                       <div className="text-purple-600">
                         <SparkArea points={DEMO_SERIES.csat.map((value) => value * 10)} />
                       </div>
-                      <p className="mt-3 text-xs text-gray-400">Tip: correlate low CSAT with breach and reopens.</p>
+                      <p className="mt-3 text-xs text-slate-400">Tip: correlate low CSAT with breach and reopens.</p>
                     </CardShell>
                   </div>
                   <div className="space-y-5 lg:col-span-5">
@@ -1360,10 +1360,10 @@ export function ReportsPage({
                         ].map((row) => (
                           <div key={row.label}>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-gray-700">{row.label}</span>
-                              <span className="text-gray-600">{toPercent(row.value)}</span>
+                              <span className="text-slate-700">{row.label}</span>
+                              <span className="text-slate-600">{toPercent(row.value)}</span>
                             </div>
-                            <div className="mt-2 h-2 w-full rounded-full bg-gray-100">
+                            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
                               <div className="h-2 rounded-full bg-purple-600" style={{ width: `${row.value}%` }} />
                             </div>
                           </div>
@@ -1373,7 +1373,7 @@ export function ReportsPage({
                     <CardShell title="Low CSAT tags" sub="Common tags on low-rated tickets (demo)">
                       <div className="flex flex-wrap gap-2">
                         {['outage', 'bug', 'refund', 'vip', 'billing'].map((tag) => (
-                          <span key={tag} className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                          <span key={tag} className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
                             #{tag}
                           </span>
                         ))}
@@ -1391,12 +1391,12 @@ export function ReportsPage({
                     <CardShell title="Aging distribution" sub="Open tickets by age bucket.">
                       <div className="space-y-3">
                         {ageBuckets.map((bucket) => (
-                          <div key={bucket.bucket} className="rounded-lg px-3 py-2 hover:bg-gray-50">
+                          <div key={bucket.bucket} className="rounded-lg px-3 py-2 hover:bg-slate-50">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-800">{bucket.bucket}</span>
-                              <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">{bucket.count}</span>
+                              <span className="text-sm font-medium text-slate-800">{bucket.bucket}</span>
+                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{bucket.count}</span>
                             </div>
-                            <div className="mt-2 h-2 w-full rounded-full bg-gray-100">
+                            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
                               <div
                                 className="h-2 rounded-full bg-amber-600"
                                 style={{ width: `${Math.min(100, (bucket.count / Math.max(ageBuckets[0]?.count || 1, 1)) * 100)}%` }}
@@ -1429,9 +1429,9 @@ export function ReportsPage({
                           </p>
                         </div>
                       </div>
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                        <p className="text-sm font-semibold text-gray-900">Suggested actions</p>
-                        <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-gray-600">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-sm font-semibold text-slate-900">Suggested actions</p>
+                        <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-slate-600">
                           <li>Enable escalation automation at 75% for critical tickets.</li>
                           <li>Add routing rule: tag outage -&gt; priority critical -&gt; Technical Support queue.</li>
                           <li>Staff peak inbound windows on Monday and Tuesday for email channel.</li>
@@ -1448,9 +1448,9 @@ export function ReportsPage({
                 <div className="grid gap-5 md:grid-cols-2">
                   <CardShell title="Export datasets" sub="CSV/XLSX/JSON/PDF snapshot">
                     <div className="space-y-3">
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                        <p className="text-sm font-semibold text-gray-900">One-time export</p>
-                        <p className="mt-1 text-xs text-gray-500">Use current scope and filters.</p>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-sm font-semibold text-slate-900">One-time export</p>
+                        <p className="mt-1 text-xs text-slate-500">Use current scope and filters.</p>
                         <button
                           type="button"
                           onClick={() => setShowExportModal(true)}
@@ -1458,25 +1458,25 @@ export function ReportsPage({
                           className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${
                             canExport
                               ? 'bg-blue-600 text-white hover:bg-blue-700'
-                              : 'cursor-not-allowed bg-gray-100 text-gray-400'
+                              : 'cursor-not-allowed bg-slate-100 text-slate-400'
                           }`}
                         >
                           Open export
                         </button>
                       </div>
-                      <div className="rounded-xl border border-gray-200 bg-white p-4">
-                        <p className="text-sm font-semibold text-gray-900">Share link</p>
-                        <p className="mt-1 text-xs text-gray-500">Share a read-only snapshot URL (demo)</p>
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-slate-900">Share link</p>
+                        <p className="mt-1 text-xs text-slate-500">Share a read-only snapshot URL (demo)</p>
                         <div className="mt-3 flex items-center gap-2">
                           <input
                             readOnly
                             value="https://app.helpdesk.local/reports/snapshots/abc123"
-                            className="flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+                            className="flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600"
                           />
                           <button
                             type="button"
                             onClick={copyShareLink}
-                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
                           >
                             Copy
                           </button>
@@ -1487,23 +1487,23 @@ export function ReportsPage({
 
                   <CardShell title="Schedules" sub="Email summaries (UI mock)">
                     <div className="space-y-3">
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-semibold text-gray-900">Weekly exec summary</p>
-                            <p className="mt-1 text-xs text-gray-500">Every Monday at 9:00 AM</p>
+                            <p className="text-sm font-semibold text-slate-900">Weekly exec summary</p>
+                            <p className="mt-1 text-xs text-slate-500">Every Monday at 9:00 AM</p>
                           </div>
                           <Toggle checked={true} onChange={() => toast.success('Schedule toggled')} />
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">PDF snapshot</span>
-                          <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">Include SLA + CSAT</span>
-                          <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">Recipients: 5</span>
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">PDF snapshot</span>
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Include SLA + CSAT</span>
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Recipients: 5</span>
                         </div>
                       </div>
-                      <div className="rounded-xl border border-gray-200 bg-white p-4">
-                        <p className="text-sm font-semibold text-gray-900">Create schedule</p>
-                        <p className="mt-1 text-xs text-gray-500">Requires Team Admin+</p>
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-slate-900">Create schedule</p>
+                        <p className="mt-1 text-xs text-slate-500">Requires Team Admin+</p>
                         <button
                           type="button"
                           onClick={() => {
@@ -1515,7 +1515,7 @@ export function ReportsPage({
                           className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${
                             canSaveViews
                               ? 'bg-blue-600 text-white hover:bg-blue-700'
-                              : 'cursor-not-allowed bg-gray-100 text-gray-400'
+                              : 'cursor-not-allowed bg-slate-100 text-slate-400'
                           }`}
                         >
                           New schedule
@@ -1542,15 +1542,15 @@ export function ReportsPage({
       {showExportModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div>
-                <p className="text-base font-semibold text-gray-900">Export report</p>
-                <p className="mt-0.5 text-xs text-gray-500">Choose dataset and format</p>
+                <p className="text-base font-semibold text-slate-900">Export report</p>
+                <p className="mt-0.5 text-xs text-slate-500">Choose dataset and format</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowExportModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-slate-400 hover:text-slate-600"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1558,9 +1558,9 @@ export function ReportsPage({
               </button>
             </div>
             <div className="space-y-4 overflow-y-auto p-6">
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <p className="text-sm font-semibold text-gray-800">Current scope</p>
-                <p className="mt-1 text-xs text-gray-500">{exportScopeLabel}</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-800">Current scope</p>
+                <p className="mt-1 text-xs text-slate-500">{exportScopeLabel}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {filters.priority !== 'all' ? (
                     <Chip
@@ -1590,35 +1590,35 @@ export function ReportsPage({
                   <button
                     key={dataset.key}
                     type="button"
-                    className="rounded-xl border border-gray-200 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50"
+                    className="rounded-xl border border-slate-200 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50"
                   >
-                    <p className="text-sm font-semibold text-gray-900">{dataset.label}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{dataset.desc}</p>
+                    <p className="text-sm font-semibold text-slate-900">{dataset.label}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{dataset.desc}</p>
                   </button>
                 ))}
               </div>
 
-              <div className="rounded-xl border border-gray-200 p-4">
-                <p className="text-sm font-semibold text-gray-900">Format</p>
+              <div className="rounded-xl border border-slate-200 p-4">
+                <p className="text-sm font-semibold text-slate-900">Format</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {['CSV', 'XLSX', 'PDF (summary)', 'JSON'].map((format) => (
                     <button
                       key={format}
                       type="button"
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
                     >
                       {format}
                     </button>
                   ))}
                 </div>
-                <p className="mt-3 text-xs text-gray-400">PDF exports a snapshot of the dashboard cards and tables.</p>
+                <p className="mt-3 text-xs text-slate-400">PDF exports a snapshot of the dashboard cards and tables.</p>
               </div>
 
               <div className="flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowExportModal(false)}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -1641,3 +1641,4 @@ export function ReportsPage({
     </section>
   );
 }
+

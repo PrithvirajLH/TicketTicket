@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy composite admin page kept only for reference.
+ * Active routing uses dedicated admin pages:
+ * `/sla-settings`, `/routing`, `/automation`, `/custom-fields`, `/audit-log`, `/reports`.
+ */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowRightLeft,

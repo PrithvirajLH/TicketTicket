@@ -6,6 +6,7 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
+  Menu,
   Settings,
   Ticket,
   Users
@@ -119,6 +120,25 @@ function isAdminRoutePath(pathname: string): boolean {
   );
 }
 
+function isShellLayoutPath(pathname: string): boolean {
+  if (pathname === '/tickets' || pathname.startsWith('/tickets/')) {
+    return true;
+  }
+  return (
+    pathname === '/dashboard' ||
+    pathname === '/triage' ||
+    pathname === '/manager' ||
+    pathname === '/team' ||
+    pathname === '/sla-settings' ||
+    pathname === '/routing' ||
+    pathname === '/automation' ||
+    pathname === '/audit-log' ||
+    pathname === '/custom-fields' ||
+    pathname === '/categories' ||
+    pathname === '/reports'
+  );
+}
+
 function deriveNavKey(
   pathname: string,
   role: Role,
@@ -192,6 +212,14 @@ function App() {
     }
     return window.localStorage.getItem('sidebar-collapsed') === 'true';
   });
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.matchMedia('(max-width: 1023px)').matches;
+  });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileAdminSidebarOpen, setMobileAdminSidebarOpen] = useState(false);
   const [adminSidebarDismissed, setAdminSidebarDismissed] = useState(false);
 
   const [navKey, setNavKey] = useState<NavKey>('dashboard');
@@ -240,6 +268,9 @@ function App() {
   const adminMenuEnabled = canUseAdminMenu(currentPersona.role);
   const isAdminRoute = isAdminRoutePath(location.pathname);
   const showAdminSidebar = adminMenuEnabled && isAdminRoute && !adminSidebarDismissed;
+  const shellLayoutPath = isShellLayoutPath(location.pathname);
+  const desktopMainOffset = showAdminSidebar ? 'lg:ml-64' : isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64';
+  const showMobileBackdrop = isMobileViewport && (mobileSidebarOpen || mobileAdminSidebarOpen);
 
   const createCustomFields = useMemo(() => {
     if (!createForm.categoryId) return createCustomFieldsRaw;
@@ -281,6 +312,27 @@ function App() {
   }, [isAdminRoute]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 1023px)');
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener('change', syncViewport);
+    return () => media.removeEventListener('change', syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileSidebarOpen(false);
+      setMobileAdminSidebarOpen(false);
+    }
+  }, [isMobileViewport]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+    setMobileAdminSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -300,6 +352,9 @@ function App() {
   }, [currentEmail, refreshKey]);
 
   function handleNavSelect(key: NavKey) {
+    setMobileSidebarOpen(false);
+    setMobileAdminSidebarOpen(false);
+
     if (key === 'dashboard') {
       navigate('/dashboard');
       return;
@@ -326,6 +381,9 @@ function App() {
     if (key === 'admin') {
       setAdminSidebarDismissed(false);
       navigate('/sla-settings');
+      if (isMobileViewport) {
+        setMobileAdminSidebarOpen(true);
+      }
       return;
     }
 
@@ -525,6 +583,16 @@ function App() {
   const viewSubtitle =
     viewSubtitleOverride ?? viewMeta[navKey]?.subtitle ?? 'Quick view of your ticket activity and updates.';
 
+  function openMobileNavigation() {
+    if (adminMenuEnabled && isAdminRoute && !adminSidebarDismissed) {
+      setMobileAdminSidebarOpen(true);
+      setMobileSidebarOpen(false);
+      return;
+    }
+    setMobileSidebarOpen(true);
+    setMobileAdminSidebarOpen(false);
+  }
+
   return (
     <div className="min-h-screen overflow-hidden">
       <ToastContainer />
@@ -537,7 +605,7 @@ function App() {
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
           onCreateTicket={() => setShowCreateModal(true)}
-          className="z-40"
+          className="z-40 hidden lg:flex"
           showAdminSidebarTrigger={adminMenuEnabled && !showAdminSidebar}
           onOpenAdminSidebar={() => {
             setAdminSidebarDismissed(false);
@@ -556,41 +624,79 @@ function App() {
               setAdminSidebarDismissed(false);
               navigate(route);
             }}
+            className="hidden lg:block"
+          />
+        )}
+
+        {showMobileBackdrop && (
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              setMobileAdminSidebarOpen(false);
+            }}
+            className="fixed inset-0 z-40 bg-slate-900/35 lg:hidden"
+            aria-label="Close navigation"
+          />
+        )}
+
+        <Sidebar
+          collapsed={false}
+          onToggle={() => setMobileSidebarOpen(false)}
+          hideCollapseToggle
+          items={visibleNav}
+          activeKey={navKey}
+          onSelect={(key) => handleNavSelect(key as NavKey)}
+          currentRole={currentPersona.role}
+          onCreateTicket={() => setShowCreateModal(true)}
+          className={`z-50 lg:hidden ${
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+          }`}
+          showAdminSidebarTrigger={adminMenuEnabled && !mobileAdminSidebarOpen}
+          onOpenAdminSidebar={() => {
+            setAdminSidebarDismissed(false);
+            setMobileSidebarOpen(false);
+            setMobileAdminSidebarOpen(true);
+            if (!isAdminRoutePath(location.pathname)) {
+              navigate('/sla-settings');
+            }
+          }}
+        />
+
+        {adminMenuEnabled && (
+          <AdminSidebar
+            visible={mobileAdminSidebarOpen}
+            role={currentPersona.role}
+            pathname={location.pathname}
+            onBack={() => {
+              setMobileAdminSidebarOpen(false);
+              setMobileSidebarOpen(true);
+            }}
+            onNavigate={(route) => {
+              setAdminSidebarDismissed(false);
+              setMobileAdminSidebarOpen(false);
+              setMobileSidebarOpen(false);
+              navigate(route);
+            }}
+            className="z-[60] lg:hidden"
           />
         )}
 
         <main
           className={`flex-1 min-w-0 w-full transition-all duration-300 h-screen overflow-y-auto ${
-            location.pathname === '/dashboard' ||
-            location.pathname === '/tickets' ||
-            location.pathname.startsWith('/tickets/') ||
-            location.pathname === '/triage' ||
-            location.pathname === '/manager' ||
-            location.pathname === '/team' ||
-            location.pathname === '/sla-settings' ||
-            location.pathname === '/routing' ||
-            location.pathname === '/automation' ||
-            location.pathname === '/audit-log' ||
-            location.pathname === '/custom-fields' ||
-            location.pathname === '/categories' ||
-            location.pathname === '/reports'
-              ? 'py-0'
-              : 'py-8'
-          } ${showAdminSidebar ? 'ml-64' : isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}
+            shellLayoutPath ? 'py-0' : 'py-8'
+          } ${desktopMainOffset}`}
         >
-          {location.pathname !== '/dashboard' &&
-            location.pathname !== '/tickets' &&
-            !location.pathname.startsWith('/tickets/') &&
-            location.pathname !== '/triage' &&
-            location.pathname !== '/manager' &&
-            location.pathname !== '/team' &&
-            location.pathname !== '/sla-settings' &&
-            location.pathname !== '/routing' &&
-            location.pathname !== '/automation' &&
-            location.pathname !== '/audit-log' &&
-            location.pathname !== '/custom-fields' &&
-            location.pathname !== '/categories' &&
-            location.pathname !== '/reports' && (
+          <button
+            type="button"
+            onClick={openMobileNavigation}
+            className="fixed left-4 top-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm lg:hidden"
+            aria-label="Open navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          {!shellLayoutPath && (
             <TopBar
               title={viewTitle}
               subtitle={viewSubtitle}

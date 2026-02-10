@@ -19,10 +19,11 @@ export function Sidebar({
   onCreateTicket,
   className,
   showAdminSidebarTrigger = false,
-  onOpenAdminSidebar
+  onOpenAdminSidebar,
+  hideCollapseToggle = false
 }: {
   collapsed: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;
   items: SidebarItem[];
   activeKey: string;
   onSelect: (key: string) => void;
@@ -31,6 +32,7 @@ export function Sidebar({
   className?: string;
   showAdminSidebarTrigger?: boolean;
   onOpenAdminSidebar?: () => void;
+  hideCollapseToggle?: boolean;
 }) {
   function renderItemButton(item: SidebarItem, isActive: boolean, label: string) {
     const Icon = item.icon;
@@ -38,14 +40,22 @@ export function Sidebar({
       <button
         type="button"
         onClick={() => onSelect(item.key)}
-        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+        className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
           collapsed ? 'justify-center' : ''
         } ${
-          isActive ? 'bg-slate-900 text-white shadow-soft' : 'text-slate-700 hover:bg-slate-100/70'
+          isActive
+            ? 'bg-slate-100 text-slate-900 shadow-soft'
+            : 'text-slate-700 hover:bg-slate-100/80'
         }`}
       >
+        {isActive && (
+          <span
+            className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-blue-600"
+            aria-hidden
+          />
+        )}
         <span className="flex-shrink-0">
-          <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-600'}`} />
+          <Icon className={`h-5 w-5 ${isActive ? 'text-blue-600' : 'text-slate-600'}`} />
         </span>
         {!collapsed && (
           <span className="flex-1 text-left truncate flex items-center gap-2">
@@ -53,7 +63,7 @@ export function Sidebar({
             {typeof item.badge === 'number' && item.badge > 0 && (
               <span
                 className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-semibold ${
-                  isActive ? 'bg-white/90 text-slate-900' : 'bg-slate-200 text-slate-700'
+                  isActive ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
                 }`}
               >
                 {item.badge > 99 ? '99+' : item.badge}
@@ -78,7 +88,6 @@ export function Sidebar({
         {!collapsed && (
           <div>
             <p className="text-sm font-semibold text-slate-900">CSNHC</p>
-            <p className="text-xs text-slate-600">Service Desk</p>
           </div>
         )}
       </div>
@@ -126,22 +135,28 @@ export function Sidebar({
                         key={child.key}
                         type="button"
                         onClick={() => onSelect(child.key)}
-                        className={`w-full text-left text-[12px] font-medium px-2.5 py-1.5 rounded-md transition-colors flex items-center gap-2 ${
+                        className={`relative w-full text-left text-[12px] font-medium px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
                           childActive
-                            ? 'bg-slate-900 text-white shadow-soft'
-                            : 'text-slate-600 hover:bg-slate-100/70'
+                            ? 'bg-slate-100 text-slate-900 shadow-soft'
+                            : 'text-slate-600 hover:bg-slate-100/80'
                         }`}
                       >
+                        {childActive && (
+                          <span
+                            className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-blue-600"
+                            aria-hidden
+                          />
+                        )}
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            childActive ? 'bg-white' : 'bg-slate-300'
+                            childActive ? 'bg-blue-600' : 'bg-slate-300'
                           }`}
                         />
                         <span className="truncate flex-1">{child.label}</span>
                         {typeof child.badge === 'number' && child.badge > 0 && (
                           <span
                             className={`flex-shrink-0 min-w-[1.25rem] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-semibold ${
-                              childActive ? 'bg-white/90 text-slate-900' : 'bg-slate-200 text-slate-700'
+                              childActive ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
                             }`}
                           >
                             {child.badge > 99 ? '99+' : child.badge}
@@ -162,7 +177,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={onCreateTicket}
-            className={`w-full inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-slate-800 transition ${collapsed ? 'justify-center' : ''}`}
+            className={`w-full inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-soft hover:bg-blue-700 transition ${collapsed ? 'justify-center' : ''}`}
           >
             <Plus className="h-5 w-5 flex-shrink-0" />
             {!collapsed && <span>New Ticket</span>}
@@ -171,15 +186,17 @@ export function Sidebar({
       )}
 
       <div className="mt-6 border-t border-slate-200/60 pt-4 flex items-center justify-between">
-        {!collapsed && <span className="text-xs text-slate-600">Secure internal system</span>}
-        <button
-          type="button"
-          onClick={onToggle}
-          className="h-8 w-8 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:text-slate-900"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
+        {!collapsed && <span />}
+        {!hideCollapseToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="h-8 w-8 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:text-slate-900"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        )}
       </div>
     </aside>
   );
