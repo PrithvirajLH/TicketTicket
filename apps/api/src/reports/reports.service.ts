@@ -11,7 +11,12 @@ import {
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** For TEAM_ADMIN, force teamId to primary team and ignore other teamId. */
+  /**
+   * Scope report query by role:
+   * - LEAD: scope to the lead's team (user.teamId from membership).
+   * - TEAM_ADMIN: scope to the admin's primary team (user.primaryTeamId).
+   * - OWNER: platform-wide; ignore any teamId so SLA/reports are across all teams.
+   */
   private scopeReportQuery(query: ReportQueryDto, user: AuthUser): ReportQueryDto {
     if (user.role === UserRole.TEAM_ADMIN) {
       if (!user.primaryTeamId) {
@@ -24,6 +29,10 @@ export class ReportsService {
         throw new ForbiddenException('Lead must belong to a team');
       }
       return { ...query, teamId: user.teamId };
+    }
+    if (user.role === UserRole.OWNER) {
+      const { teamId: _omit, ...rest } = query;
+      return { ...rest } as ReportQueryDto;
     }
     return query;
   }
@@ -183,43 +192,42 @@ export class ReportsService {
       dateField,
     );
     conditions.push(Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`);
+    // Count distinct tickets: a ticket is "breached" if it breached first response OR resolution (or both).
+    // "met" = had SLA in range and did not breach either. No double-counting.
     const row = await this.prisma.$queryRaw<
-      {
-        first_response_met: bigint;
-        first_response_breached: bigint;
-        resolution_met: bigint;
-        resolution_breached: bigint;
-      }[]
+      { met: bigint; breached: bigint }[]
     >`
+      WITH base AS (
+        SELECT id,
+          ("firstResponseDueAt" IS NOT NULL AND (
+            ("firstResponseAt" IS NULL AND now() > "firstResponseDueAt") OR
+            ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt")
+          )) AS fr_breached,
+          ("dueAt" IS NOT NULL AND (
+            ("resolvedAt" IS NULL AND now() > "dueAt") OR
+            ("resolvedAt" IS NOT NULL AND "resolvedAt" > "dueAt")
+          )) AS res_breached
+        FROM "Ticket"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      )
       SELECT
-        count(*) FILTER (WHERE "firstResponseDueAt" IS NOT NULL AND "firstResponseAt" IS NOT NULL AND "firstResponseAt" <= "firstResponseDueAt")::bigint as first_response_met,
-        count(*) FILTER (WHERE "firstResponseDueAt" IS NOT NULL AND (
-          ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt") OR
-          ("firstResponseAt" IS NULL AND now() > "firstResponseDueAt")
-        ))::bigint as first_response_breached,
-        count(*) FILTER (WHERE "dueAt" IS NOT NULL AND "resolvedAt" IS NOT NULL AND "resolvedAt" <= "dueAt")::bigint as resolution_met,
-        count(*) FILTER (WHERE "dueAt" IS NOT NULL AND (
-          ("resolvedAt" IS NOT NULL AND "resolvedAt" > "dueAt") OR
-          ("resolvedAt" IS NULL AND now() > "dueAt")
-        ))::bigint as resolution_breached
-      FROM "Ticket"
-      WHERE ${Prisma.join(conditions, ' AND ')}
+        count(*) FILTER (WHERE NOT fr_breached AND NOT res_breached)::bigint AS met,
+        count(*) FILTER (WHERE fr_breached OR res_breached)::bigint AS breached
+      FROM base
     `;
     const r = row[0];
-    const firstResponseMet = Number(r?.first_response_met ?? 0);
-    const firstResponseBreached = Number(r?.first_response_breached ?? 0);
-    const resolutionMet = Number(r?.resolution_met ?? 0);
-    const resolutionBreached = Number(r?.resolution_breached ?? 0);
-    const total = firstResponseMet + firstResponseBreached + resolutionMet + resolutionBreached;
+    const met = Number(r?.met ?? 0);
+    const breached = Number(r?.breached ?? 0);
+    const total = met + breached;
     return {
       data: {
-        met: firstResponseMet + resolutionMet,
-        breached: firstResponseBreached + resolutionBreached,
+        met,
+        breached,
         total,
-        firstResponseMet,
-        firstResponseBreached,
-        resolutionMet,
-        resolutionBreached,
+        firstResponseMet: 0,
+        firstResponseBreached: 0,
+        resolutionMet: 0,
+        resolutionBreached: 0,
       },
     };
   }

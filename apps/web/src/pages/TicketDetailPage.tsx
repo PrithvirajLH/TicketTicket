@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, ChevronUp, Copy, Info, ListOrdered, MessageSquare } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Bell, Check, ChevronDown, Clock3, Copy, MessageSquare, Paperclip, Search } from 'lucide-react';
 import {
   addTicketMessage,
   ApiError,
@@ -11,27 +11,24 @@ import {
   fetchTicketById,
   fetchTicketEvents,
   fetchTicketMessages,
-  uploadTicketAttachment,
   transitionTicket,
   transferTicket,
   unfollowTicket,
+  uploadTicketAttachment,
+  type NotificationRecord,
   type TeamMember,
   type TeamRef,
   type TicketDetail,
   type TicketEvent,
-  type TicketMessage
+  type TicketMessage,
 } from '../api/client';
 import { CustomFieldsDisplay } from '../components/CustomFieldRenderer';
-import type { Role } from '../types';
-import { ActivityTimeline } from '../components/ActivityTimeline';
 import { MessageBody } from '../components/MessageBody';
 import { RelativeTime } from '../components/RelativeTime';
-import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEditor';
-import { SlaCountdownTimer } from '../components/SlaCountdownTimer';
-import { copyToClipboard } from '../utils/clipboard';
-import { htmlMentionsToMarkdown } from '../utils/messageBody';
 import { TicketDetailSkeleton } from '../components/skeletons';
-import { formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
+import type { Role } from '../types';
+import { copyToClipboard } from '../utils/clipboard';
+import { formatStatus, formatTicketId, initialsFor } from '../utils/format';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
@@ -42,21 +39,42 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   WAITING_ON_VENDOR: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
   RESOLVED: ['REOPENED', 'CLOSED'],
   CLOSED: ['REOPENED'],
-  REOPENED: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED']
+  REOPENED: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
 };
 
 export function TicketDetailPage({
   refreshKey,
   currentEmail,
   role,
-  teamsList
+  teamsList,
+  headerProps,
 }: {
   refreshKey: number;
   currentEmail: string;
   role: Role;
   teamsList: TeamRef[];
+  headerProps?: {
+    title: string;
+    subtitle: string;
+    currentEmail: string;
+    personas: { label: string; email: string }[];
+    onEmailChange: (email: string) => void;
+    onOpenSearch?: () => void;
+    notificationProps?: {
+      notifications: NotificationRecord[];
+      unreadCount: number;
+      loading: boolean;
+      hasMore: boolean;
+      onLoadMore: () => void;
+      onMarkAsRead: (id: string) => void;
+      onMarkAllAsRead: () => void;
+      onRefresh: () => void;
+    };
+  };
 }) {
   const { ticketId } = useParams();
+  const navigate = useNavigate();
+
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
@@ -69,12 +87,17 @@ export function TicketDetailPage({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
-  const [messageBody, setMessageBody] = useState('');
+
+  const [activeTab, setActiveTab] = useState<'conversation' | 'timeline'>('conversation');
   const [messageType, setMessageType] = useState<'PUBLIC' | 'INTERNAL'>('PUBLIC');
+  const [messageBody, setMessageBody] = useState('');
+  const [messageSending, setMessageSending] = useState(false);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
+
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [assignToId, setAssignToId] = useState('');
@@ -82,42 +105,46 @@ export function TicketDetailPage({
   const [transferTeamId, setTransferTeamId] = useState('');
   const [transferAssigneeId, setTransferAssigneeId] = useState('');
   const [transferMembers, setTransferMembers] = useState<TeamMember[]>([]);
+
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const [showAllAttachments, setShowAllAttachments] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
+
   const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [conversationView, setConversationView] = useState<'conversation' | 'timeline'>('conversation');
+  const [interfaceMode, setInterfaceMode] = useState('Agent View');
+  const [expandedSections, setExpandedSections] = useState({
+    edit: true,
+    followers: false,
+    additional: false,
+    history: false,
+  });
+
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const replyEditorRef = useRef<RichTextEditorRef | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
+
   const activeTicketIdRef = useRef<string | null>(null);
   const detailRequestSeqRef = useRef(0);
   const messageRequestSeqRef = useRef(0);
   const eventRequestSeqRef = useRef(0);
-  const navigate = useNavigate();
-  const statusEvents = events.filter((event) => event.type === 'TICKET_STATUS_CHANGED');
+
   const followers = ticket?.followers ?? [];
+  const statusEvents = events.filter((event) => event.type === 'TICKET_STATUS_CHANGED');
   const isFollowing = followers.some((follower) => follower.user.email === currentEmail);
   const canManage = role !== 'EMPLOYEE';
   const canUpload = ticket ? role !== 'EMPLOYEE' || ticket.requester?.email === currentEmail : false;
-  const memberRoleLookup = useMemo(
-    () => new Map(teamMembers.map((member) => [member.user.id, member.role])),
-    [teamMembers]
-  );
   const availableTransitions = useMemo(() => {
     if (!ticket) {
       return [];
     }
     return STATUS_TRANSITIONS[ticket.status] ?? [];
   }, [ticket]);
+  const headerTitle = headerProps?.title ?? 'Ticket details';
 
   useEffect(() => {
     if (!ticketId) {
       return;
     }
-    loadTicketDetail(ticketId);
+    void loadTicketDetail(ticketId);
   }, [ticketId, refreshKey]);
 
   useEffect(() => {
@@ -156,9 +183,6 @@ export function TicketDetailPage({
   }, [ticket?.id, ticket?.status, availableTransitions]);
 
   useEffect(() => {
-    if (!ticket) {
-      return;
-    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [ticket?.id, messages.length]);
 
@@ -169,34 +193,18 @@ export function TicketDetailPage({
   }, [role]);
 
   useEffect(() => {
-    if (!copyToast) return;
-    const t = window.setTimeout(() => {
+    if (!copyToast) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
       setCopyToast(null);
-      setLinkCopied(false);
-    }, 2000);
-    return () => window.clearTimeout(t);
+    }, 3000);
+    return () => window.clearTimeout(timeoutId);
   }, [copyToast]);
 
-  async function handleCopyLink() {
-    if (!ticketId) return;
-    const url = `${window.location.origin}/tickets/${ticketId}`;
-    const ok = await copyToClipboard(url);
-    if (ok) {
-      setLinkCopied(true);
-      setCopyToast({ message: 'Link copied to clipboard', type: 'success' });
-    } else {
-      setLinkCopied(false);
-      setCopyToast({ message: 'Could not copy link', type: 'error' });
-    }
-  }
-
-  // Ticket detail keyboard shortcuts: R (focus reply), A (assign to me), S (status), Escape (go back)
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      // Don't run if a modal (palette, shortcuts help, etc.) already handled the event
       if (event.defaultPrevented) return;
-
-      // Don't run when a modal is open (Esc should close modal, not navigate)
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
 
       const target = event.target as HTMLElement;
@@ -205,7 +213,6 @@ export function TicketDetailPage({
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
         target.isContentEditable;
-      // Shortcuts don't fire when typing (including Escape in reply textarea)
       if (isInput) return;
 
       switch (event.key) {
@@ -213,14 +220,14 @@ export function TicketDetailPage({
         case 'R':
           if (!event.ctrlKey && !event.metaKey && !event.altKey) {
             event.preventDefault();
-            replyEditorRef.current?.focus();
+            messageInputRef.current?.focus();
           }
           break;
         case 'a':
         case 'A':
           if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage && !ticket?.assignee) {
             event.preventDefault();
-            handleAssignSelf();
+            void handleAssignSelf();
           }
           break;
         case 's':
@@ -238,9 +245,10 @@ export function TicketDetailPage({
           break;
       }
     }
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canManage, ticket?.assignee, navigate]);
+  }, [canManage, navigate, ticket?.assignee]);
 
   async function loadMessagesPage(id: string, reset = false) {
     const requestSeq = ++messageRequestSeqRef.current;
@@ -249,6 +257,7 @@ export function TicketDetailPage({
       setMessageCursor(null);
       setMessagesHasMore(false);
     }
+
     setMessagesLoading(true);
     try {
       const response = await fetchTicketMessages(id, {
@@ -280,6 +289,7 @@ export function TicketDetailPage({
       setEventCursor(null);
       setEventsHasMore(false);
     }
+
     setEventsLoading(true);
     try {
       const response = await fetchTicketEvents(id, {
@@ -312,8 +322,8 @@ export function TicketDetailPage({
     setLoadingDetail(true);
     setTicketError(null);
     setAccessDenied(false);
+
     if (isNavigatingToDifferentTicket) {
-      // Avoid briefly showing the wrong ticket while navigating between ids.
       setTicket(null);
       setMessages([]);
       setEvents([]);
@@ -322,27 +332,25 @@ export function TicketDetailPage({
       setMessagesHasMore(false);
       setEventsHasMore(false);
     }
+
     try {
       const detail = await fetchTicketById(id);
-      // Guard against out-of-order responses (e.g. rapid navigation / repeated refresh triggers).
       if (detailRequestSeqRef.current !== requestSeq) {
         return;
       }
+
       setTicket(detail);
-      void loadMessagesPage(id, true);
-      void loadEventsPage(id, true);
+      await Promise.all([loadMessagesPage(id, true), loadEventsPage(id, true)]);
     } catch (error) {
       if (detailRequestSeqRef.current !== requestSeq) {
         return;
       }
       if (error instanceof ApiError && error.status === 403) {
         setAccessDenied(true);
-        setTicketError('You don’t have access to this ticket.');
+        setTicketError('You do not have access to this ticket.');
       } else {
         setTicketError('Unable to load ticket details.');
       }
-      // Only clear the screen when we navigated to a different ticket id. If this was a refresh
-      // (same id), keep previous data visible to avoid flicker and perceived latency.
       if (isNavigatingToDifferentTicket) {
         setTicket(null);
       }
@@ -353,34 +361,54 @@ export function TicketDetailPage({
     }
   }
 
-  async function handleReply() {
-    const editorHtml = replyEditorRef.current?.getValue() ?? messageBody;
-    const bodyToSend = htmlMentionsToMarkdown(editorHtml);
-    if (!ticketId || !bodyToSend.trim() || !ticket) {
+  async function handleCopyLink() {
+    if (!ticketId) {
       return;
     }
+    const url = `${window.location.origin}/tickets/${ticketId}`;
+    const copied = await copyToClipboard(url);
+    if (copied) {
+      setCopyToast({ message: 'Link copied to clipboard', type: 'success' });
+      return;
+    }
+    setCopyToast({ message: 'Could not copy link', type: 'error' });
+  }
+
+  async function handleReply() {
+    const body = messageBody.trim();
+    if (!ticketId || !ticket || !body || messageSending) {
+      return;
+    }
+
     setTicketError(null);
+    setMessageSending(true);
+
     const optimisticId = `opt-${Date.now()}`;
     const optimisticMessage: TicketMessage = {
       id: optimisticId,
-      body: bodyToSend,
+      body,
       type: messageType,
       createdAt: new Date().toISOString(),
-      author: { id: 'pending', email: currentEmail, displayName: currentEmail.split('@')[0] || 'You' }
+      author: {
+        id: 'pending',
+        email: currentEmail,
+        displayName: currentEmail.split('@')[0] || 'You',
+      },
     };
+
     setMessages((prev) => [...prev, optimisticMessage]);
     setMessageBody('');
-    addTicketMessage(ticketId, { body: bodyToSend, type: messageType })
-      .then((serverMessage) => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === optimisticId ? serverMessage : m))
-        );
-        void loadEventsPage(ticketId, true);
-      })
-      .catch(() => {
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-        setTicketError('Unable to send reply.');
-      });
+
+    try {
+      const serverMessage = await addTicketMessage(ticketId, { body, type: messageType });
+      setMessages((prev) => prev.map((item) => (item.id === optimisticId ? serverMessage : item)));
+      void loadEventsPage(ticketId, true);
+    } catch {
+      setMessages((prev) => prev.filter((item) => item.id !== optimisticId));
+      setTicketError('Unable to send message.');
+    } finally {
+      setMessageSending(false);
+    }
   }
 
   async function handleAssignSelf() {
@@ -393,7 +421,7 @@ export function TicketDetailPage({
       const updated = await assignTicket(ticket.id, {});
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
-    } catch (error) {
+    } catch {
       setActionError('Unable to assign ticket.');
     } finally {
       setActionLoading(false);
@@ -410,7 +438,7 @@ export function TicketDetailPage({
       const updated = await assignTicket(ticket.id, { assigneeId: assignToId });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
-    } catch (error) {
+    } catch {
       setActionError('Unable to assign ticket.');
     } finally {
       setActionLoading(false);
@@ -427,7 +455,7 @@ export function TicketDetailPage({
       const updated = await transitionTicket(ticket.id, { status: nextStatus });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
-    } catch (error) {
+    } catch {
       setActionError('Unable to change status.');
     } finally {
       setActionLoading(false);
@@ -443,11 +471,11 @@ export function TicketDetailPage({
     try {
       const updated = await transferTicket(ticket.id, {
         newTeamId: transferTeamId,
-        assigneeId: transferAssigneeId || undefined
+        assigneeId: transferAssigneeId || undefined,
       });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
-    } catch (error) {
+    } catch {
       setActionError('Unable to transfer ticket.');
     } finally {
       setActionLoading(false);
@@ -467,7 +495,7 @@ export function TicketDetailPage({
         await followTicket(ticket.id);
       }
       void loadTicketDetail(ticket.id);
-    } catch (error) {
+    } catch {
       setFollowError('Unable to update followers.');
     } finally {
       setFollowLoading(false);
@@ -482,6 +510,7 @@ export function TicketDetailPage({
     if (!files || files.length === 0) {
       return;
     }
+
     setAttachmentError(null);
     setAttachmentUploading(true);
     try {
@@ -489,7 +518,7 @@ export function TicketDetailPage({
         await uploadTicketAttachment(ticketId, file);
       }
       void loadTicketDetail(ticketId);
-    } catch (error) {
+    } catch {
       setAttachmentError('Unable to upload attachment.');
     } finally {
       setAttachmentUploading(false);
@@ -509,7 +538,7 @@ export function TicketDetailPage({
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch {
       setAttachmentError('Unable to download attachment.');
     }
   }
@@ -521,801 +550,684 @@ export function TicketDetailPage({
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
+    } catch {
       setAttachmentError('Unable to open attachment.');
     }
   }
 
-  function internalRoleLabel(teamRole?: string) {
-    switch (teamRole) {
-      case 'LEAD':
-        return 'Lead';
-      case 'AGENT':
-        return 'Agent';
-      case 'ADMIN':
-        return 'Admin';
-      default:
-        return null;
-    }
+  function toggleSection(section: keyof typeof expandedSections) {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   }
 
-  function formatFileSize(bytes: number) {
-    if (bytes < 1024) {
-      return `${bytes} B`;
-    }
-    const kb = bytes / 1024;
-    if (kb < 1024) {
-      return `${kb.toFixed(1)} KB`;
-    }
-    const mb = kb / 1024;
-    return `${mb.toFixed(1)} MB`;
-  }
-
-  function internalBadgeClasses(teamRole?: string) {
-    switch (teamRole) {
-      case 'LEAD':
-        return 'border-indigo-200 bg-indigo-100 text-indigo-700';
-      case 'ADMIN':
-        return 'border-slate-200 bg-slate-100 text-slate-700';
-      default:
-        return 'border-amber-200 bg-amber-100 text-amber-700';
-    }
-  }
-
-  function internalBubbleClasses(teamRole?: string) {
-    switch (teamRole) {
-      case 'LEAD':
-        return 'bg-indigo-50 border border-indigo-200/70 text-indigo-900';
-      case 'ADMIN':
-        return 'bg-slate-50 border border-slate-200/70 text-slate-900';
-      default:
-        return 'bg-amber-50 border border-amber-200/70 text-amber-900';
-    }
-  }
+  const firstAttachment = ticket?.attachments[0] ?? null;
 
   return (
-    <section className="mt-8 animate-fade-in">
+    <section className="min-w-0 bg-gray-50" title={headerTitle}>
       {copyToast && (
-        <div className="fixed right-8 top-6 z-50">
+        <div className="fixed right-4 top-4 z-50">
           <div
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg ${
+            className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg ${
               copyToast.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+                ? 'border-green-200 bg-white text-gray-900'
+                : 'border-red-200 bg-red-50 text-red-700'
             }`}
           >
-            {copyToast.message}
+            {copyToast.type === 'success' ? (
+              <Check className="h-5 w-5 text-green-600" />
+            ) : (
+              <Clock3 className="h-5 w-5" />
+            )}
+            <span className="text-sm font-medium">{copyToast.message}</span>
           </div>
         </div>
       )}
-      <div className="grid gap-6 xl:grid-cols-[1.6fr_0.8fr]">
-        <div className="space-y-6">
-          {loadingDetail && !ticket && (
-            <div className="glass-card p-5 space-y-3">
-              <div className="h-3 w-24 rounded skeleton-shimmer" />
-              <div className="h-6 w-96 max-w-full rounded skeleton-shimmer" />
-              <div className="h-3 w-48 rounded skeleton-shimmer" />
+
+      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigate('/tickets')}
+                className="flex items-center text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="mr-2 h-5 w-5" />
+                Back to tickets
+              </button>
             </div>
-          )}
-          {ticket && (
-            <div className="glass-card p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Ticket overview</p>
-                  {loadingDetail && (
-                    <p className="mt-1 text-xs text-slate-400" aria-live="polite">
-                      Refreshing…
-                    </p>
-                  )}
-                  <h2 className="text-2xl font-semibold text-slate-900 mt-1">{ticket.subject}</h2>
-                  {ticket.description && (
-                    <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap max-w-3xl">{ticket.description}</p>
-                  )}
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                      Ticket ID
-                    </span>
-                    <span className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm">
-                      <span className="font-mono tracking-tight">{formatTicketId(ticket)}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition shrink-0"
-                      aria-label="Copy link"
-                    >
-                      {linkCopied ? (
-                        <Check className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <Copy className="h-4 w-4 text-slate-500" />
-                      )}
-                      <span>Copy link</span>
-                    </button>
-                  </div>
-                </div>
-                <span
-                  className={`inline-flex items-center rounded-full border px-4 py-1.5 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}
-                >
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={headerProps?.onOpenSearch}
+                className="p-2 text-gray-600 hover:text-gray-900"
+                aria-label="Search"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+              <select
+                value={interfaceMode}
+                onChange={(event) => setInterfaceMode(event.target.value)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                aria-label="View mode"
+              >
+                <option>Agent View</option>
+                <option>Manager View</option>
+              </select>
+              <button type="button" className="relative p-2 text-gray-600 hover:text-gray-900" aria-label="Notifications">
+                <Bell className="h-5 w-5" />
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+              </button>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                {initialsFor(headerProps?.currentEmail ?? currentEmail)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {ticket && (
+        <div className="border-b border-gray-200 bg-white">
+          <div className="px-6 py-4">
+            <div className="mb-3 flex items-start justify-between">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-gray-600">{formatTicketId(ticket)}</span>
+                <span className="text-gray-300">|</span>
+                <span className={`rounded-md px-2 py-1 text-xs font-medium ${statusBadgeClass(ticket.status)}`}>
                   {formatStatus(ticket.status)}
                 </span>
-              </div>
-            </div>
-          )}
-
-          <div className="glass-card p-6 flex flex-col min-h-[640px]">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  View
+                <span className={`rounded-md px-2 py-1 text-xs font-medium ${priorityBadgeClass(ticket.priority)}`}>
+                  {formatPriority(ticket.priority)}
                 </span>
-                <div
-                  role="tablist"
-                  aria-label="Conversation or activity timeline"
-                  className="inline-flex rounded-xl border border-slate-200 bg-slate-100/80 p-1 shadow-inner"
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowLeft' && conversationView === 'timeline') {
-                      e.preventDefault();
-                      setConversationView('conversation');
-                    }
-                    if (e.key === 'ArrowRight' && conversationView === 'conversation') {
-                      e.preventDefault();
-                      setConversationView('timeline');
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={conversationView === 'conversation'}
-                    aria-controls="ticket-conversation-panel"
-                    id="tab-conversation"
-                    tabIndex={conversationView === 'conversation' ? 0 : -1}
-                    onClick={() => setConversationView('conversation')}
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 focus-visible:ring-offset-2 ${
-                      conversationView === 'conversation'
-                        ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900'
-                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
-                    }`}
-                  >
-                    <MessageSquare className="h-4 w-4 flex-shrink-0" aria-hidden />
-                    Conversation
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={conversationView === 'timeline'}
-                    aria-controls="ticket-timeline-panel"
-                    id="tab-timeline"
-                    tabIndex={conversationView === 'timeline' ? 0 : -1}
-                    onClick={() => setConversationView('timeline')}
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 focus-visible:ring-offset-2 ${
-                      conversationView === 'timeline'
-                        ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900'
-                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
-                    }`}
-                  >
-                    <ListOrdered className="h-4 w-4 flex-shrink-0" aria-hidden />
-                    Timeline
-                  </button>
-                </div>
+                <span className="rounded-md bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+                  {formatChannel(ticket.channel)}
+                </span>
               </div>
-              {conversationView === 'conversation' && (
-                <p className="text-sm text-slate-500">
-                  {role === 'EMPLOYEE' ? 'Chat with the assigned agent.' : 'Chat with the requester.'}
-                </p>
-              )}
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="flex items-center text-sm text-blue-600 hover:text-blue-700"
+              >
+                <Copy className="mr-1 h-4 w-4" />
+                Copy link
+              </button>
             </div>
-            {ticketError && !accessDenied && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
-            {accessDenied && (
-              <div className="mt-4 p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
-                <p className="text-sm font-medium">You don’t have access to this ticket.</p>
-                <p className="text-sm text-amber-800 mt-1">Switch to a user who can view it, or go back to the ticket list.</p>
-                <button
-                  type="button"
-                  onClick={() => navigate('/tickets')}
-                  className="mt-3 text-sm font-semibold text-amber-800 hover:text-amber-900 underline"
-                >
-                  Back to tickets
-                </button>
-              </div>
-            )}
-            {loadingDetail && !ticket && (
-              <TicketDetailSkeleton count={4} className="mt-4" />
-            )}
-            {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
-            {ticket && (
-              <div className="flex flex-col flex-1 min-h-0 mt-4">
-                {conversationView === 'timeline' ? (
-                  <div
-                    id="ticket-timeline-panel"
-                    role="tabpanel"
-                    aria-labelledby="tab-timeline"
-                    className="flex-1 min-h-0 overflow-y-auto pr-2"
-                  >
-                    <ActivityTimeline ticket={ticket} events={events} messages={messages} role={role} />
-                    {eventsHasMore && (
-                      <div className="mt-4 flex justify-center">
-                        <button
-                          type="button"
-                          onClick={() => ticketId && loadEventsPage(ticketId)}
-                          disabled={eventsLoading}
-                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                        >
-                          {eventsLoading ? 'Loading…' : 'Load older events'}
-                        </button>
-                      </div>
+            <h1 className="mb-2 text-xl font-semibold text-gray-900">{ticket.subject}</h1>
+            {ticket.description && <p className="mb-3 text-sm text-gray-600">{ticket.description}</p>}
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 sm:gap-4">
+              <span>
+                Created <RelativeTime value={ticket.createdAt} />
+              </span>
+              <span className="hidden sm:inline">•</span>
+              <span>
+                Requester: <span className="text-gray-900">{ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}</span>
+              </span>
+              <span className="hidden sm:inline">•</span>
+              <span>
+                Assignee: <span className="text-gray-900">{ticket.assignee?.displayName ?? 'Unassigned'}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mx-auto max-w-[1600px] px-6 py-6">
+        {ticketError && <p className="mb-4 text-sm text-red-600">{ticketError}</p>}
+        {accessDenied && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+            <p className="text-sm">Switch to a user with access, or go back to the ticket list.</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="xl:col-span-2">
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="border-b border-gray-200 px-6 pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex space-x-6">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('conversation')}
+                      className={`pb-3 px-1 text-sm font-medium ${
+                        activeTab === 'conversation'
+                          ? 'border-b-2 border-blue-500 text-blue-500'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Conversation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('timeline')}
+                      className={`pb-3 px-1 text-sm font-medium ${
+                        activeTab === 'timeline'
+                          ? 'border-b-2 border-blue-500 text-blue-500'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Timeline
+                    </button>
+                  </div>
+                  <div className="flex items-center space-x-2 pb-2 text-xs text-gray-500">
+                    <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1">R</kbd>
+                    <span>Reply</span>
+                    {canManage && (
+                      <>
+                        <span className="mx-1">•</span>
+                        <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1">A</kbd>
+                        <span>Assign</span>
+                        <span className="mx-1">•</span>
+                        <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1">S</kbd>
+                        <span>Status</span>
+                      </>
                     )}
                   </div>
-                ) : (
-                  <div
-                    id="ticket-conversation-panel"
-                    role="tabpanel"
-                    aria-labelledby="tab-conversation"
-                    className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4"
-                  >
-                    {messages.length === 0 && !messagesLoading && (
-                      <div className="text-sm text-slate-500">No messages yet. Start the conversation.</div>
-                    )}
-                    {messagesHasMore && (
-                      <div className="flex justify-center">
+                </div>
+              </div>
+
+              <div className="p-6">
+                {loadingDetail && !ticket && <TicketDetailSkeleton count={4} />}
+                {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-gray-500">Ticket not found.</p>}
+
+                {ticket && activeTab === 'conversation' && (
+                  <>
+                    <div className="mb-6 max-h-[600px] space-y-4 overflow-y-auto">
+                      {messagesHasMore && (
                         <button
                           type="button"
-                          onClick={() => ticketId && loadMessagesPage(ticketId)}
+                          onClick={() => ticketId && void loadMessagesPage(ticketId)}
                           disabled={messagesLoading}
-                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                          className="mb-4 text-sm text-blue-600 hover:text-blue-700"
                         >
-                          {messagesLoading ? 'Loading…' : 'Load older messages'}
+                          {messagesLoading ? 'Loading...' : '↑ Load older messages'}
                         </button>
-                      </div>
-                    )}
-                    {messages.map((message) => {
-                    const isOptimistic =
-                      typeof message.id === 'string' && message.id.startsWith('opt-');
-                    const isOwn = message.author?.email === currentEmail;
-                    const isInternal = message.type === 'INTERNAL';
-                    const authorTeamRole = isOptimistic
-                      ? role
-                      : memberRoleLookup.get(message.author.id) ??
-                        (message.author?.email === currentEmail ? role : undefined);
-                    const internalLabel = internalRoleLabel(authorTeamRole);
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex items-start gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
-                      >
-                        <div className="h-9 w-9 flex-shrink-0 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-xs font-semibold shadow-soft">
-                          {initialsFor(message.author?.displayName ?? currentEmail)}
+                      )}
+
+                      {messages.length === 0 && !messagesLoading && (
+                        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
+                          No messages yet.
                         </div>
-                        <div className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
-                          <div
-                            className={`rounded-2xl px-4 py-2 text-sm shadow-soft ${
-                              isOwn
-                                ? isInternal
-                                  ? internalBubbleClasses(authorTeamRole)
-                                  : 'bg-slate-900 text-white'
-                                : isInternal
-                                ? internalBubbleClasses(authorTeamRole)
-                                : 'bg-white/80 border border-slate-200/70 text-slate-700'
+                      )}
+
+                      {messages.map((message) => {
+                        const isCurrentUser = message.author?.email === currentEmail;
+                        const isInternal = message.type === 'INTERNAL';
+                        const isRequester =
+                          message.author?.id === ticket.requester?.id ||
+                          message.author?.email === ticket.requester?.email;
+
+                        return (
+                          <div key={message.id}>
+                            <div className={`flex items-start gap-3 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                              <div
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                                  isRequester ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                                }`}
+                              >
+                                {initialsFor(message.author?.displayName ?? message.author?.email ?? 'U')}
+                              </div>
+                              <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
+                                <div className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : ''}`}>
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {message.author?.displayName ?? message.author?.email ?? 'Unknown'}
+                                  </span>
+                                  {isInternal && (
+                                    <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                                      Internal
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-500">
+                                    <RelativeTime value={message.createdAt} />
+                                  </span>
+                                </div>
+                                <div
+                                  className={`inline-block rounded-lg p-3 ${
+                                    isInternal
+                                      ? 'border border-yellow-200 bg-yellow-50 text-gray-900'
+                                      : isCurrentUser
+                                        ? 'bg-blue-50 text-gray-900'
+                                        : 'bg-gray-50 text-gray-900'
+                                  }`}
+                                >
+                                  <MessageBody body={message.body} />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={messagesEndRef} />
+                    </div>
+
+                    <div className="border-t border-gray-200 pt-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setMessageType('PUBLIC')}
+                            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                              messageType === 'PUBLIC'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                           >
-                            {!isOwn && (
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-xs font-semibold text-slate-500">
-                                  {message.author?.displayName ?? message.author?.email ?? '—'}
-                                </p>
-                                {isInternal && (
-                                  <span
-                                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${internalBadgeClasses(authorTeamRole)}`}
-                                  >
-                                    Internal{internalLabel ? ` • ${internalLabel}` : ''}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            <MessageBody body={message.body} invert={isOwn && !isInternal} />
-                          </div>
-                          <span className="text-xs text-slate-400 mt-1 block">
-                            <RelativeTime value={message.createdAt} />
-                            {isOwn && isOptimistic && <span className="ml-2 opacity-70">Sending…</span>}
-                          </span>
-                          {isOwn && isInternal && (
-                            <span
-                              className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${internalBadgeClasses(authorTeamRole)}`}
+                            Public Reply
+                          </button>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => setMessageType('INTERNAL')}
+                              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                                messageType === 'INTERNAL'
+                                  ? 'bg-yellow-600 text-white'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
                             >
-                              Internal{internalLabel ? ` • ${internalLabel}` : ''}
-                            </span>
+                              Internal Note
+                            </button>
                           )}
                         </div>
+                        {canUpload && (
+                          <label className="cursor-pointer text-gray-600 hover:text-gray-900">
+                            <Paperclip className="h-5 w-5" />
+                            <input
+                              type="file"
+                              multiple
+                              className="sr-only"
+                              onChange={handleAttachmentUpload}
+                              disabled={attachmentUploading}
+                            />
+                          </label>
+                        )}
                       </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-                )}
-                {conversationView === 'conversation' && (
-                  <div className="flex-shrink-0 border-t border-slate-200/60 pt-4 mt-4">
-                    {role !== 'EMPLOYEE' && (
-                      <div className="mb-3 inline-flex rounded-full border border-slate-200 bg-white/80 p-1 text-xs">
+
+                      <textarea
+                        ref={messageInputRef}
+                        value={messageBody}
+                        onChange={(event) => setMessageBody(event.target.value)}
+                        placeholder={messageType === 'INTERNAL' ? 'Type internal note...' : 'Type your message...'}
+                        rows={4}
+                        className="w-full resize-none rounded-md border border-gray-300 p-3 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      />
+
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="text-xs text-gray-500">
+                          {firstAttachment ? (
+                            <>
+                              Attachments:{' '}
+                              <button
+                                type="button"
+                                onClick={() => void handleAttachmentView(firstAttachment.id)}
+                                className="text-blue-600 hover:underline"
+                              >
+                                {firstAttachment.fileName}
+                              </button>{' '}
+                              <button
+                                type="button"
+                                onClick={() => void handleAttachmentDownload(firstAttachment.id, firstAttachment.fileName)}
+                                className="text-blue-600 hover:underline"
+                              >
+                                download
+                              </button>{' '}
+                              ({formatFileSize(firstAttachment.sizeBytes)})
+                              {ticket.attachments.length > 1 && ` +${ticket.attachments.length - 1} more`}
+                            </>
+                          ) : (
+                            'Attachments: None'
+                          )}
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setMessageType('PUBLIC')}
-                          className={`rounded-full px-3 py-1 font-semibold transition ${
-                            messageType === 'PUBLIC'
-                              ? 'bg-slate-900 text-white'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
+                          onClick={() => void handleReply()}
+                          disabled={!messageBody.trim() || messageSending}
+                          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                         >
-                          Public reply
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMessageType('INTERNAL')}
-                          className={`rounded-full px-3 py-1 font-semibold transition ${
-                            messageType === 'INTERNAL'
-                              ? 'bg-amber-500 text-white'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Internal note
+                          {messageSending ? 'Sending...' : 'Send'}
                         </button>
                       </div>
-                    )}
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 bg-white/80 focus-within:ring-2 focus-within:ring-slate-900/10">
-                        <RichTextEditor
-                          ref={replyEditorRef}
-                          value={messageBody}
-                          onChange={setMessageBody}
-                          placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
-                          users={teamMembers.map((m) => m.user)}
-                          cannedVariables={{
-                            ticketId: ticket?.id,
-                            ticketSubject: ticket?.subject,
-                            requesterName: ticket?.requester?.displayName ?? ticket?.requester?.email,
-                          }}
-                          minRows={2}
-                          maxRows={12}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleReply}
-                        className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 transition"
-                      >
-                        Send
-                      </button>
+                      {attachmentError && <p className="mt-2 text-xs text-red-600">{attachmentError}</p>}
                     </div>
-                  </div>
+                  </>
                 )}
-              </div>
-            )}
-          </div>
 
-          {ticket && (
-            <div className="glass-card p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Attachments</h3>
-                  <p className="text-sm text-slate-500">
-                    {ticket.attachments.length === 0
-                      ? 'No files uploaded yet.'
-                      : `${ticket.attachments.length} file${ticket.attachments.length === 1 ? '' : 's'}`}
-                  </p>
-                </div>
-                {canUpload && (
-                  <label className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white cursor-pointer">
-                    {attachmentUploading ? 'Uploading…' : 'Add files'}
-                    <input
-                      type="file"
-                      multiple
-                      className="sr-only"
-                      onChange={handleAttachmentUpload}
-                      disabled={attachmentUploading}
-                    />
-                  </label>
-                )}
-              </div>
-              {attachmentError && <p className="mt-3 text-sm text-red-600">{attachmentError}</p>}
-              <div className="mt-4 space-y-3">
-                {ticket.attachments.length === 0 && (
-                  <p className="text-sm text-slate-500">Attach screenshots or documents to help resolve faster.</p>
-                )}
-                {(showAllAttachments ? ticket.attachments : ticket.attachments.slice(0, 3)).map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{attachment.fileName}</p>
-                      <p className="text-xs text-slate-600">
-                        {formatFileSize(attachment.sizeBytes)} · Uploaded by {attachment.uploadedBy.displayName}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
+                {ticket && activeTab === 'timeline' && (
+                  <div className="max-h-[600px] space-y-4 overflow-y-auto">
+                    {eventsHasMore && (
                       <button
                         type="button"
-                        onClick={() => handleAttachmentView(attachment.id)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        onClick={() => ticketId && void loadEventsPage(ticketId)}
+                        disabled={eventsLoading}
+                        className="mb-4 text-sm text-blue-600 hover:text-blue-700"
                       >
-                        View
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAttachmentDownload(attachment.id, attachment.fileName)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {ticket.attachments.length > 3 && !showAllAttachments && (
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-xs text-slate-500">
-                      ... and {ticket.attachments.length - 3} more file{ticket.attachments.length - 3 === 1 ? '' : 's'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowAllAttachments(true)}
-                      className="text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2"
-                    >
-                      View all
-                    </button>
-                  </div>
-                )}
-                {ticket.attachments.length > 3 && showAllAttachments && (
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAllAttachments(false)}
-                      className="text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2"
-                    >
-                      Show less
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          {ticket && (
-            <div className="space-y-3">
-              <SlaCountdownTimer type="first_response" ticket={ticket} />
-              <SlaCountdownTimer type="resolution" ticket={ticket} />
-            </div>
-          )}
-          {canManage && (
-            <div className="glass-card p-6">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Agent actions</h3>
-                  <p className="text-sm text-slate-500">Assign, transition, or transfer this ticket.</p>
-                </div>
-                {ticket && (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1">
-                      Team: {ticket.assignedTeam?.name ?? 'Unassigned'}
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1">
-                      Assignee: {ticket.assignee?.displayName ?? 'Unassigned'}
-                    </span>
-                  </div>
-                )}
-              </div>
-              {actionError && <p className="text-sm text-red-600 mt-3">{actionError}</p>}
-              <div className="mt-4 grid gap-4">
-                <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Assign</p>
-                      <p className="text-xs text-slate-500">Self or team member</p>
-                    </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                      {ticket?.assignee ? 'Assigned' : 'Unassigned'}
-                    </span>
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-                    {!ticket?.assignee && (
-                      <button
-                        type="button"
-                        onClick={handleAssignSelf}
-                        disabled={actionLoading}
-                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        Assign to me
+                        {eventsLoading ? 'Loading...' : '↑ Load older events'}
                       </button>
                     )}
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={assignToId}
-                      onChange={(event) => setAssignToId(event.target.value)}
-                      disabled={membersLoading || actionLoading || teamMembers.length === 0}
-                    >
-                      <option value="">{membersLoading ? 'Loading team…' : 'Select member'}</option>
-                      {teamMembers.map((member) => (
-                        <option key={member.id} value={member.user.id}>
-                          {member.user.displayName}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAssignMember}
-                      disabled={!assignToId || actionLoading}
-                      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Assign
-                    </button>
-                  </div>
-                </div>
 
-                <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Status</p>
-                      <p className="text-xs text-slate-500">Workflow change</p>
-                    </div>
-                    {ticket && (
-                      <span
-                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] ${statusBadgeClass(ticket.status)}`}
-                      >
-                        {formatStatus(ticket.status)}
-                      </span>
+                    {events.length === 0 && !eventsLoading && (
+                      <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
+                        No events yet.
+                      </div>
                     )}
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <select
-                      ref={statusSelectRef}
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={nextStatus}
-                      onChange={(event) => setNextStatus(event.target.value)}
-                      disabled={actionLoading || availableTransitions.length === 0}
-                    >
-                      {availableTransitions.length === 0 && <option value="">No transitions</option>}
-                      {availableTransitions.map((status) => (
-                        <option key={status} value={status}>
-                          {formatStatus(status)}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleTransition}
-                      disabled={actionLoading || !nextStatus || nextStatus === ticket?.status}
-                      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Update status
-                    </button>
-                  </div>
-                </div>
 
-                <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Transfer</p>
-                      <p className="text-xs text-slate-500">Move to another team</p>
-                    </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                      Reassign ownership
-                    </span>
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={transferTeamId}
-                      onChange={(event) => setTransferTeamId(event.target.value)}
-                      disabled={actionLoading}
-                    >
-                      <option value="">Select department</option>
-                      {teamsList.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={transferAssigneeId}
-                      onChange={(event) => setTransferAssigneeId(event.target.value)}
-                      disabled={actionLoading || !transferTeamId}
-                    >
-                      <option value="">No assignee</option>
-                      {transferMembers.map((member) => (
-                        <option key={member.id} value={member.user.id}>
-                          {member.user.displayName}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleTransfer}
-                      disabled={
-                        actionLoading ||
-                        !transferTeamId ||
-                        transferTeamId === ticket?.assignedTeam?.id
-                      }
-                      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Transfer
-                    </button>
-                  </div>
-                  {transferTeamId && transferTeamId === ticket?.assignedTeam?.id && (
-                    <p className="mt-2 text-xs text-amber-600">
-                      Choose a different department to transfer this ticket.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="glass-card overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setDetailsExpanded(!detailsExpanded)}
-              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
-                  <Info className="h-4 w-4 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-slate-900">Ticket Details</p>
-                  <p className="text-xs text-slate-500">
-                    {ticket ? `${ticket.priority} · ${ticket.assignedTeam?.name ?? 'Unassigned'}` : 'Loading...'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {ticket && (
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusBadgeClass(ticket.status)}`}>
-                    {formatStatus(ticket.status)}
-                  </span>
-                )}
-                {detailsExpanded ? (
-                  <ChevronUp className="h-5 w-5 text-slate-400" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-slate-400" />
-                )}
-              </div>
-            </button>
-            <div
-              className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                detailsExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
-              }`}
-            >
-              <TicketDetailsCard ticket={ticket} loading={loadingDetail} />
-            </div>
-          </div>
-
-          {ticket && (
-            <div className="glass-card p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Followers</h3>
-                  <p className="text-sm text-slate-500">
-                    {followers.length === 0 ? 'No followers yet.' : `${followers.length} watching`}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleFollowToggle}
-                  disabled={followLoading}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold shadow-sm transition ${
-                    isFollowing
-                      ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      : 'bg-slate-900 text-white hover:bg-slate-800'
-                  }`}
-                >
-                  {isFollowing ? 'Unfollow' : 'Follow'}
-                </button>
-              </div>
-              {followError && <p className="mt-3 text-sm text-red-600">{followError}</p>}
-              {followers.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {followers.map((follower) => (
-                    <div key={follower.id} className="flex items-center gap-3 text-sm text-slate-700">
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-[11px] font-semibold">
-                        {initialsFor(follower.user.displayName)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900 truncate">{follower.user.displayName}</p>
-                        <p className="text-xs text-slate-500 truncate">{follower.user.email}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="glass-card p-6">
-            <h3 className="text-lg font-semibold text-slate-900">Status history</h3>
-            <p className="text-sm text-slate-500">Timeline of status changes.</p>
-            {ticket && (
-              <div className="mt-4 max-h-[400px] overflow-y-auto pr-2">
-                {statusEvents.length === 0 && (
-                  <p className="text-sm text-slate-500">No status changes recorded yet.</p>
-                )}
-                <div className="relative space-y-3">
-                  <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200" />
-                  {statusEvents.map((event) => {
-                    const payload = event.payload as { from?: string; to?: string } | null;
-                    const fromStatus = payload?.from ? formatStatus(payload.from) : '—';
-                    const toStatus = payload?.to ? formatStatus(payload.to) : formatStatus(ticket.status);
-                    const actorLabel = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
-                    return (
-                      <div key={event.id} className="relative pl-6">
-                        <span
-                          className={`absolute left-[2px] top-2 h-2.5 w-2.5 rounded-full border ${
-                            statusBadgeClass(payload?.to)
-                          }`}
-                        />
-                        <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-[1fr_auto] sm:items-center">
-                          <div className="flex items-center gap-2">
-                            <RelativeTime value={event.createdAt} className="whitespace-nowrap" />
-                            <span className="text-slate-300">•</span>
-                            <span className="text-slate-400 truncate">by {actorLabel}</span>
+                    {events.map((event, index) => {
+                      const eventKind = getEventKind(event);
+                      return (
+                        <div key={event.id} className="flex items-start gap-3">
+                          <div className="relative">
+                            <div
+                              className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                                eventKind === 'message'
+                                  ? 'bg-blue-100'
+                                  : eventKind === 'internal'
+                                    ? 'bg-yellow-100'
+                                    : 'bg-gray-100'
+                              }`}
+                            >
+                              {eventKind === 'message' || eventKind === 'internal' ? (
+                                <MessageSquare className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <Clock3 className="h-4 w-4 text-gray-600" />
+                              )}
+                            </div>
+                            {index < events.length - 1 && <div className="absolute left-4 top-8 h-8 w-px bg-gray-200" />}
                           </div>
-                          <div className="flex items-center gap-2 justify-start sm:justify-center">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${statusBadgeClass(payload?.from)}`}
-                            >
-                              {fromStatus}
-                            </span>
-                            <span className="text-slate-300">→</span>
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${statusBadgeClass(payload?.to)}`}
-                            >
-                              {toStatus}
-                            </span>
+                          <div className="flex-1 pt-1">
+                            <p className="text-sm text-gray-900">{formatEventText(event)}</p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              <RelativeTime value={event.createdAt} />
+                            </p>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <aside className="space-y-4 xl:col-span-1">
+            {ticket && (
+              <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <h3 className="mb-3 text-sm font-semibold text-gray-900">SLA Overview</h3>
+                <div className="space-y-3">
+                  {renderSlaCard('First Response', getFirstResponseSla(ticket))}
+                  {renderSlaCard('Resolution SLA', getResolutionSla(ticket))}
                 </div>
               </div>
             )}
-          </div>
+
+            {canManage && (
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('edit')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-gray-900">Edit Ticket</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-gray-500 transition-transform ${expandedSections.edit ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {expandedSections.edit && (
+                  <div className="space-y-4 px-4 pb-4">
+                    {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">Assign to</label>
+                      <div className="flex space-x-2">
+                        <select
+                          value={assignToId}
+                          onChange={(event) => setAssignToId(event.target.value)}
+                          disabled={membersLoading || actionLoading || teamMembers.length === 0}
+                          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          <option value="">{membersLoading ? 'Loading team...' : 'Select assignee'}</option>
+                          {teamMembers.map((member) => (
+                            <option key={member.id} value={member.user.id}>
+                              {member.user.displayName}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleAssignMember()}
+                          disabled={!assignToId || actionLoading}
+                          className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Assign
+                        </button>
+                      </div>
+                      {!ticket?.assignee && (
+                        <button
+                          type="button"
+                          onClick={() => void handleAssignSelf()}
+                          disabled={actionLoading}
+                          className="mt-2 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                        >
+                          Assign to me
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">Change status</label>
+                      <div className="flex space-x-2">
+                        <select
+                          ref={statusSelectRef}
+                          value={nextStatus}
+                          onChange={(event) => setNextStatus(event.target.value)}
+                          disabled={actionLoading || availableTransitions.length === 0}
+                          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          {availableTransitions.length === 0 && <option value="">No transitions</option>}
+                          {availableTransitions.map((status) => (
+                            <option key={status} value={status}>
+                              {formatStatus(status)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleTransition()}
+                          disabled={actionLoading || !nextStatus || nextStatus === ticket?.status}
+                          className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Update
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">Transfer to</label>
+                      <div className="space-y-2">
+                        <select
+                          value={transferTeamId}
+                          onChange={(event) => setTransferTeamId(event.target.value)}
+                          disabled={actionLoading}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          <option value="">Select department</option>
+                          {teamsList.map((team) => (
+                            <option key={team.id} value={team.id}>
+                              {team.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={transferAssigneeId}
+                          onChange={(event) => setTransferAssigneeId(event.target.value)}
+                          disabled={actionLoading || !transferTeamId}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          <option value="">Select assignee</option>
+                          {transferMembers.map((member) => (
+                            <option key={member.id} value={member.user.id}>
+                              {member.user.displayName}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleTransfer()}
+                          disabled={actionLoading || !transferTeamId || transferTeamId === ticket?.assignedTeam?.id}
+                          className="w-full rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Transfer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold text-gray-900">Ticket Details</h3>
+              <TicketDetailsCard ticket={ticket} loading={loadingDetail} />
+            </div>
+
+            {ticket && (
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('followers')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-gray-900">Followers ({followers.length})</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-gray-500 transition-transform ${
+                      expandedSections.followers ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {expandedSections.followers && (
+                  <div className="px-4 pb-4">
+                    <div className="mb-3 space-y-2">
+                      {followers.length === 0 && <p className="text-xs text-gray-500">No followers yet.</p>}
+                      {followers.map((follower) => (
+                        <div key={follower.id} className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
+                              {initialsFor(follower.user.displayName)}
+                            </div>
+                            <span className="text-sm text-gray-900">{follower.user.displayName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleFollowToggle()}
+                      disabled={followLoading}
+                      className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                    >
+                      {isFollowing ? 'Unfollow this ticket' : '+ Follow this ticket'}
+                    </button>
+                    {followError && <p className="mt-2 text-xs text-red-600">{followError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {ticket && (
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('additional')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-gray-900">Additional Details</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-gray-500 transition-transform ${
+                      expandedSections.additional ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {expandedSections.additional && (
+                  <div className="space-y-2 px-4 pb-4 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Reference ID</span>
+                      <span className="text-gray-900">{formatTicketId(ticket)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Source IP</span>
+                      <span className="text-gray-900">192.168.1.1</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Browser</span>
+                      <span className="text-gray-900">Chrome 120</span>
+                    </div>
+                    {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
+                      <div className="pt-2">
+                        <CustomFieldsDisplay values={ticket.customFieldValues} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {ticket && (
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('history')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-gray-900">Status History</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-gray-500 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {expandedSections.history && (
+                  <div className="space-y-3 px-4 pb-4">
+                    {statusEvents.length === 0 && <p className="text-xs text-gray-500">No status changes recorded yet.</p>}
+
+                    {statusEvents.map((event) => {
+                      const payload = (event.payload ?? {}) as { from?: string; to?: string };
+                      const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
+                      return (
+                        <div key={event.id} className="text-xs">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-gray-600">
+                              {payload.from ? formatStatus(payload.from) : 'Unknown'} →{' '}
+                              {payload.to ? formatStatus(payload.to) : formatStatus(ticket.status)}
+                            </span>
+                            <span className="text-gray-500">
+                              <RelativeTime value={event.createdAt} />
+                            </span>
+                          </div>
+                          <p className="text-gray-500">By {actor}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </aside>
         </div>
       </div>
     </section>
   );
 }
 
-function priorityColor(priority: string) {
-  switch (priority) {
-    case 'P1':
-      return 'from-red-500 to-rose-600 text-white';
-    case 'P2':
-      return 'from-amber-500 to-orange-500 text-white';
-    case 'P3':
-      return 'from-sky-500 to-blue-500 text-white';
-    case 'P4':
-      return 'from-slate-400 to-slate-500 text-white';
-    default:
-      return 'from-slate-400 to-slate-500 text-white';
-  }
-}
-
 function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; loading: boolean }) {
   if (loading) {
     return (
       <div className="animate-pulse">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-full bg-slate-700" />
-            <div className="flex-1">
-              <div className="h-4 w-24 rounded bg-slate-700" />
-              <div className="mt-2 h-3 w-32 rounded bg-slate-700/50" />
-            </div>
-          </div>
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="h-3 w-full rounded bg-slate-200" />
-          <div className="h-3 w-3/4 rounded bg-slate-100" />
+        <div className="space-y-3">
+          <div className="h-4 w-28 rounded bg-gray-200" />
+          <div className="h-3 w-40 rounded bg-gray-100" />
+          <div className="h-3 w-full rounded bg-gray-200" />
+          <div className="h-3 w-3/4 rounded bg-gray-100" />
         </div>
       </div>
     );
@@ -1326,84 +1238,32 @@ function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; l
   }
 
   return (
-    <div>
-      <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-black p-4">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-white font-semibold text-sm ring-2 ring-white/10">
-            {initialsFor(ticket.requester?.displayName ?? 'U')}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">
-              {ticket.requester?.displayName ?? 'Unknown'}
-            </p>
-            <p className="text-xs text-slate-400 truncate">{ticket.requester?.email ?? '—'}</p>
-          </div>
-          <div
-            className={`h-8 w-8 rounded-lg bg-gradient-to-br ${priorityColor(ticket.priority)} flex items-center justify-center text-xs font-bold shadow-lg`}
-          >
-            {ticket.priority}
-          </div>
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-          <span className="inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Created <RelativeTime value={ticket.createdAt} />
-          </span>
-        </div>
+    <div className="space-y-2 text-sm">
+      <div className="flex justify-between">
+        <span className="text-gray-600">Requester</span>
+        <span className="font-medium text-gray-900">{ticket.requester?.displayName ?? 'Unknown'}</span>
       </div>
-
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Department</span>
-          <span className="text-sm font-medium text-slate-900">
-            {ticket.assignedTeam?.name ?? <span className="text-slate-400 italic">Unassigned</span>}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Assignee</span>
-          {ticket.assignee ? (
-            <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-[10px] font-semibold">
-                {initialsFor(ticket.assignee.displayName)}
-              </div>
-              <span className="text-sm font-medium text-slate-900">{ticket.assignee.displayName}</span>
-            </div>
-          ) : (
-            <span className="text-sm text-slate-400 italic">Unassigned</span>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Channel</span>
-          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
-            {ticket.channel ?? '—'}
-          </span>
-        </div>
-
-        {renderSlaRow('First response SLA', getFirstResponseSla(ticket))}
-        {renderSlaRow('Resolution SLA', getResolutionSla(ticket))}
-
-        {ticket.category && (
-          <div className="flex items-center justify-between py-2 border-b border-slate-100">
-            <span className="text-xs text-slate-500 uppercase tracking-wide">Category</span>
-            <span className="text-sm font-medium text-slate-900">{ticket.category.name}</span>
-          </div>
-        )}
-
-        {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-          <div className="py-2 border-b border-slate-100 space-y-2">
-            <span className="text-xs text-slate-500 uppercase tracking-wide block">Custom fields</span>
-            <CustomFieldsDisplay values={ticket.customFieldValues} />
-          </div>
-        )}
-
-        <div className="flex items-center justify-between py-2">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Reference</span>
-          <span className="font-mono text-xs text-slate-600 bg-slate-50 px-2 py-1 rounded">
-            {formatTicketId(ticket)}
-          </span>
-        </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Email</span>
+        <span className="text-gray-900">{ticket.requester?.email ?? '—'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Department</span>
+        <span className="text-gray-900">{ticket.assignedTeam?.name ?? 'Unassigned'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Assignee</span>
+        <span className="font-medium text-gray-900">{ticket.assignee?.displayName ?? 'Unassigned'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Category</span>
+        <span className="text-gray-900">{ticket.category?.name ?? 'None'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-600">Created</span>
+        <span className="text-gray-900">
+          <RelativeTime value={ticket.createdAt} />
+        </span>
       </div>
     </div>
   );
@@ -1412,16 +1272,14 @@ function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; l
 const SLA_RISK_WINDOW_MS = 4 * 60 * 60 * 1000;
 const SLA_FIRST_RESPONSE_RISK_MS = 2 * 60 * 60 * 1000;
 
-function renderSlaRow(label: string, sla: { label: string; tone: string; detail: ReactNode }) {
+function renderSlaCard(label: string, sla: { label: string; tone: string; detail: ReactNode }) {
   return (
-    <div className="py-2 border-b border-slate-100">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-500 uppercase tracking-wide">{label}</span>
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${sla.tone}`}>
-          {sla.label}
-        </span>
+    <div className={`rounded-md border p-3 ${sla.tone}`}>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-medium">{label}</span>
+        <span className="text-xs">{sla.label}</span>
       </div>
-      <p className="mt-1 text-xs text-slate-500">{sla.detail}</p>
+      <p className="text-xs">{sla.detail}</p>
     </div>
   );
 }
@@ -1429,21 +1287,21 @@ function renderSlaRow(label: string, sla: { label: string; tone: string; detail:
 function getFirstResponseSla(ticket: TicketDetail) {
   if (ticket.firstResponseAt) {
     return {
-      label: 'Responded',
-      tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+      label: 'Met',
+      tone: 'border-green-200 bg-green-50 text-green-700',
       detail: (
         <>
           Responded <RelativeTime value={ticket.firstResponseAt} />
         </>
-      )
+      ),
     };
   }
 
   if (!ticket.firstResponseDueAt) {
     return {
       label: 'Not set',
-      tone: 'border-slate-200 bg-slate-100 text-slate-600',
-      detail: 'No SLA configured'
+      tone: 'border-gray-200 bg-gray-100 text-gray-600',
+      detail: 'No SLA configured',
     };
   }
 
@@ -1451,33 +1309,35 @@ function getFirstResponseSla(ticket: TicketDetail) {
   if (dueMs < 0) {
     return {
       label: 'Breached',
-      tone: 'border-rose-200 bg-rose-100 text-rose-700',
+      tone: 'border-red-200 bg-red-50 text-red-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.firstResponseDueAt} />
         </>
-      )
+      ),
     };
   }
+
   if (dueMs <= SLA_FIRST_RESPONSE_RISK_MS) {
     return {
-      label: 'At risk',
-      tone: 'border-amber-200 bg-amber-100 text-amber-700',
+      label: 'At Risk',
+      tone: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.firstResponseDueAt} />
         </>
-      )
+      ),
     };
   }
+
   return {
     label: 'Open',
-    tone: 'border-sky-200 bg-sky-100 text-sky-700',
+    tone: 'border-blue-200 bg-blue-50 text-blue-700',
     detail: (
       <>
         Due <RelativeTime value={ticket.firstResponseDueAt} />
       </>
-    )
+    ),
   };
 }
 
@@ -1485,37 +1345,35 @@ function getResolutionSla(ticket: TicketDetail) {
   if (ticket.completedAt) {
     return {
       label: 'Met',
-      tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+      tone: 'border-green-200 bg-green-50 text-green-700',
       detail: (
         <>
           Completed <RelativeTime value={ticket.completedAt} />
         </>
-      )
+      ),
     };
   }
 
   if (!ticket.dueAt) {
     return {
       label: 'Not set',
-      tone: 'border-slate-200 bg-slate-100 text-slate-600',
-      detail: 'No SLA configured'
+      tone: 'border-gray-200 bg-gray-100 text-gray-600',
+      detail: 'No SLA configured',
     };
   }
 
-  const isPaused =
-    ticket.status === 'WAITING_ON_REQUESTER' || ticket.status === 'WAITING_ON_VENDOR';
-
+  const isPaused = ticket.status === 'WAITING_ON_REQUESTER' || ticket.status === 'WAITING_ON_VENDOR';
   if (isPaused) {
     return {
       label: 'Paused',
-      tone: 'border-amber-200 bg-amber-100 text-amber-700',
+      tone: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: ticket.slaPausedAt ? (
         <>
           Paused <RelativeTime value={ticket.slaPausedAt} />
         </>
       ) : (
         'Paused'
-      )
+      ),
     };
   }
 
@@ -1523,32 +1381,140 @@ function getResolutionSla(ticket: TicketDetail) {
   if (dueMs < 0) {
     return {
       label: 'Breached',
-      tone: 'border-rose-200 bg-rose-100 text-rose-700',
+      tone: 'border-red-200 bg-red-50 text-red-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.dueAt} />
         </>
-      )
+      ),
     };
   }
+
   if (dueMs <= SLA_RISK_WINDOW_MS) {
     return {
-      label: 'At risk',
-      tone: 'border-amber-200 bg-amber-100 text-amber-700',
+      label: 'At Risk',
+      tone: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.dueAt} />
         </>
-      )
+      ),
     };
   }
+
   return {
-    label: 'On track',
-    tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+    label: 'On Track',
+    tone: 'border-green-200 bg-green-50 text-green-700',
     detail: (
       <>
         Due <RelativeTime value={ticket.dueAt} />
       </>
-    )
+    ),
   };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+function formatPriority(priority?: string | null) {
+  const value = (priority ?? '').toUpperCase();
+  switch (value) {
+    case 'P1':
+    case 'URGENT':
+      return 'Urgent';
+    case 'P2':
+    case 'HIGH':
+      return 'High';
+    case 'P3':
+    case 'MEDIUM':
+      return 'Medium';
+    case 'P4':
+    case 'LOW':
+      return 'Low';
+    default:
+      return priority ?? 'Unknown';
+  }
+}
+
+function priorityBadgeClass(priority?: string | null) {
+  const label = formatPriority(priority);
+  if (label === 'Urgent') return 'bg-red-100 text-red-700';
+  if (label === 'High') return 'bg-orange-100 text-orange-700';
+  if (label === 'Medium') return 'bg-blue-100 text-blue-700';
+  return 'bg-gray-100 text-gray-700';
+}
+
+function statusBadgeClass(status?: string | null) {
+  switch (status) {
+    case 'NEW':
+      return 'bg-blue-100 text-blue-800';
+    case 'TRIAGED':
+    case 'ASSIGNED':
+    case 'IN_PROGRESS':
+    case 'WAITING_ON_REQUESTER':
+    case 'WAITING_ON_VENDOR':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'RESOLVED':
+    case 'CLOSED':
+      return 'bg-green-100 text-green-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
+
+function formatChannel(channel?: string | null) {
+  if (!channel) {
+    return 'Unknown';
+  }
+  return channel
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getEventKind(event: TicketEvent) {
+  if (event.type === 'MESSAGE_ADDED') {
+    const payload = (event.payload ?? {}) as { type?: string };
+    return payload.type === 'INTERNAL' ? 'internal' : 'message';
+  }
+  return 'default';
+}
+
+function formatEventText(event: TicketEvent) {
+  const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
+  const payload = (event.payload ?? {}) as {
+    type?: string;
+    from?: string;
+    to?: string;
+    assigneeName?: string | null;
+    assigneeEmail?: string | null;
+    toTeamName?: string | null;
+  };
+
+  switch (event.type) {
+    case 'TICKET_CREATED':
+      return `Ticket created by ${actor}`;
+    case 'TICKET_ASSIGNED':
+      return `Assigned to ${payload.assigneeName ?? payload.assigneeEmail ?? 'team member'}`;
+    case 'TICKET_STATUS_CHANGED':
+      return `Status changed from ${formatStatus(payload.from ?? 'UNKNOWN')} to ${formatStatus(payload.to ?? 'UNKNOWN')}`;
+    case 'TICKET_TRANSFERRED':
+      return `Transferred to ${payload.toTeamName ?? 'another department'}`;
+    case 'TICKET_PRIORITY_CHANGED':
+      return `Priority changed from ${formatPriority(payload.from)} to ${formatPriority(payload.to)}`;
+    case 'MESSAGE_ADDED':
+      return payload.type === 'INTERNAL' ? `${actor} added internal note` : `${actor} replied`;
+    default:
+      return formatStatus(event.type.replace(/_/g, ' '));
+  }
 }
