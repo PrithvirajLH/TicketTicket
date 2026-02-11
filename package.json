@@ -8,9 +8,8 @@
   ],
   "main": "index.js",
   "scripts": {
-    "dev": "concurrently -n api,web,redesign \"npm run dev -w apps/api\" \"npm run dev -w apps/web\" \"npm run dev -w apps/web-redesign\"",
-    "dev:redesign": "npm run dev -w apps/web-redesign",
-    "dev:compare": "concurrently -n web,redesign \"npm run dev -w apps/web\" \"npm run dev -w apps/web-redesign\"",
+    "dev": "concurrently -n api,web \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "dev:web": "npm run dev -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "deploy:zip": "powershell -ExecutionPolicy Bypass -File ./create-deploy-zip.ps1",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",

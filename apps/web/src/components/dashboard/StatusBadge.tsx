@@ -1,13 +1,14 @@
 import { cn } from '@/lib/utils';
 import { formatStatus } from '@/utils/format';
 
-type StatusTone = 'open' | 'progress' | 'new' | 'resolved';
+type StatusTone = 'open' | 'progress' | 'new' | 'resolved' | 'closed';
 
 const toneClasses: Record<StatusTone, string> = {
   open: 'bg-slate-100 text-slate-700 border-slate-200',
   progress: 'bg-amber-100 text-amber-700 border-amber-200',
   new: 'bg-sky-100 text-sky-700 border-sky-200',
   resolved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  closed: 'bg-zinc-100 text-zinc-700 border-zinc-200',
 };
 
 function statusTone(status?: string | null): StatusTone {
@@ -21,8 +22,9 @@ function statusTone(status?: string | null): StatusTone {
     case 'WAITING_ON_VENDOR':
       return 'progress';
     case 'RESOLVED':
-    case 'CLOSED':
       return 'resolved';
+    case 'CLOSED':
+      return 'closed';
     case 'REOPENED':
     default:
       return 'open';

@@ -149,7 +149,7 @@ export function SavedViewsDropdown({
                     type="button"
                     onClick={handleSave}
                     disabled={saving || !saveName.trim()}
-                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
                   >
                     {saving ? 'Saving…' : 'Save'}
                   </button>

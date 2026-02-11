@@ -116,32 +116,24 @@ export function AdminSidebar({
 
   return (
     <aside
-      className={`glass-card-strong fixed left-0 top-0 z-50 h-screen w-64 p-5 transition-transform duration-300 ease-out ${
+      className={`fixed left-0 top-0 z-50 h-screen w-64 border-r border-slate-200 bg-white p-5 transition-transform duration-300 ease-out ${
         visible ? 'translate-x-0' : '-translate-x-full pointer-events-none'
       } ${className ?? ''}`}
       aria-hidden={!visible}
     >
       <div className="flex h-full flex-col">
         <div className="border-b border-slate-200/60 pb-4">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-slate-900 via-slate-800 to-black text-white flex items-center justify-center font-semibold">
-              A
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Admin</p>
-            </div>
-          </div>
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 text-slate-700 hover:bg-slate-100/80"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back</span>
+            <ArrowLeft className="h-5 w-5 flex-shrink-0 text-slate-600" />
+            <span className="truncate text-left">Back</span>
           </button>
         </div>
 
-        <nav className="mt-2 flex-1 space-y-0.5 py-2">
+        <nav className="mt-6 flex-1 space-y-1 overflow-y-auto">
           {items.map((item) => {
             const Icon = item.icon;
             const active = isItemActive(item.route, pathname);
@@ -150,8 +142,10 @@ export function AdminSidebar({
                 key={item.key}
                 type="button"
                 onClick={() => onNavigate(item.route)}
-                className={`relative w-full rounded-xl px-3 py-2.5 text-left transition-colors ${
-                  active ? 'bg-slate-100 text-slate-900 shadow-soft' : 'text-slate-700 hover:bg-slate-100/80'
+                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  active
+                    ? 'bg-slate-100 text-slate-900 shadow-soft'
+                    : 'text-slate-700 hover:bg-slate-100/80'
                 }`}
               >
                 {active && (
@@ -160,26 +154,16 @@ export function AdminSidebar({
                     aria-hidden
                   />
                 )}
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                      active ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className={`truncate text-sm font-semibold ${active ? 'text-slate-900' : 'text-slate-900'}`}>
-                      {item.label}
-                    </p>
-                  </div>
-                </div>
+                <Icon className={`h-5 w-5 flex-shrink-0 ${active ? 'text-blue-600' : 'text-slate-600'}`} />
+                <span className="truncate text-left">{item.label}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="border-t border-slate-200/60 pt-4" />
+        <div className="mt-6 border-t border-slate-200/60 pt-4 flex items-center justify-between">
+          <span />
+        </div>
       </div>
     </aside>
   );

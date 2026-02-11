@@ -75,7 +75,7 @@ export function TextFilterDropdown({
                       onChange(draft.trim());
                       setOpen(false);
                     }}
-                    className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+                    className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
                   >
                     Apply
                   </button>

@@ -84,7 +84,7 @@ export function MultiSelectFilter({
                       onClick={() => toggle(opt.value)}
                       className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                         checked
-                          ? 'bg-primary/10 text-primary'
+                          ? 'bg-blue-50 text-blue-700'
                           : 'text-foreground hover:bg-muted/30'
                       }`}
                     >
@@ -157,7 +157,7 @@ export function CheckboxGroupFilter({
               onClick={() => toggle(opt.value)}
               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                 active
-                  ? 'border-primary bg-primary/10 text-primary'
+                  ? 'border-blue-200 bg-blue-50 text-blue-700'
                   : 'border-border bg-background text-foreground hover:bg-muted/30'
               }`}
             >

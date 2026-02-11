@@ -1,12 +1,12 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3,
   CheckCircle,
   ClipboardList,
   Clock,
   FileText,
   FolderKanban,
   LayoutDashboard,
+  Menu,
   Settings,
   Ticket,
   Users
@@ -27,6 +27,7 @@ import {
 import { CommandPalette } from './components/CommandPalette';
 import { CreateTicketModal, type CreateTicketForm } from './components/CreateTicketModal';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
+import { AdminSidebar } from './components/AdminSidebar';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { TopBar } from './components/TopBar';
@@ -38,7 +39,6 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ManagerViewsPage } from './pages/ManagerViewsPage';
 import { SlaSettingsPage } from './pages/SlaSettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
-import { AdminPage } from './pages/AdminPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { AutomationRulesPage } from './pages/AutomationRulesPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -62,7 +62,6 @@ type NavKey =
   | 'manager'
   | 'team'
   | 'sla-settings'
-  | 'reports'
   | 'admin';
 
 const defaultPersonas: { label: string; email: string; role: Role }[] = [
@@ -100,10 +99,45 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
   { key: 'triage', label: 'Triage Board', icon: ClipboardList, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'manager', label: 'Manager Views', icon: FolderKanban, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'team', label: 'Team', icon: Users, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
-  { key: 'sla-settings', label: 'SLA Settings', icon: Clock, roles: ['TEAM_ADMIN', 'OWNER'] },
-  { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'sla-settings', label: 'SLA Settings', icon: Clock, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'admin', label: 'Admin', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] }
 ];
+
+function canUseAdminMenu(role: Role): boolean {
+  return role === 'TEAM_ADMIN' || role === 'OWNER';
+}
+
+function isAdminRoutePath(pathname: string): boolean {
+  return (
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/sla-settings') ||
+    pathname.startsWith('/routing') ||
+    pathname.startsWith('/automation') ||
+    pathname.startsWith('/custom-fields') ||
+    pathname.startsWith('/audit-log') ||
+    pathname.startsWith('/categories') ||
+    pathname.startsWith('/reports')
+  );
+}
+
+function isShellLayoutPath(pathname: string): boolean {
+  if (pathname === '/tickets' || pathname.startsWith('/tickets/')) {
+    return true;
+  }
+  return (
+    pathname === '/dashboard' ||
+    pathname === '/triage' ||
+    pathname === '/manager' ||
+    pathname === '/team' ||
+    pathname === '/sla-settings' ||
+    pathname === '/routing' ||
+    pathname === '/automation' ||
+    pathname === '/audit-log' ||
+    pathname === '/custom-fields' ||
+    pathname === '/categories' ||
+    pathname === '/reports'
+  );
+}
 
 function deriveNavKey(
   pathname: string,
@@ -121,13 +155,17 @@ function deriveNavKey(
     return 'team';
   }
   if (pathname.startsWith('/sla-settings')) {
-    return 'sla-settings';
+    return canUseAdminMenu(role) ? 'admin' : 'sla-settings';
   }
-  if (pathname.startsWith('/routing') || pathname.startsWith('/automation') || pathname.startsWith('/audit-log') || pathname.startsWith('/categories') || pathname.startsWith('/custom-fields')) {
+  if (
+    pathname.startsWith('/routing') ||
+    pathname.startsWith('/automation') ||
+    pathname.startsWith('/audit-log') ||
+    pathname.startsWith('/categories') ||
+    pathname.startsWith('/custom-fields') ||
+    pathname.startsWith('/reports')
+  ) {
     return 'admin';
-  }
-  if (pathname.startsWith('/reports')) {
-    return 'reports';
   }
   if (pathname.startsWith('/admin')) {
     return 'admin';
@@ -174,6 +212,15 @@ function App() {
     }
     return window.localStorage.getItem('sidebar-collapsed') === 'true';
   });
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.matchMedia('(max-width: 1023px)').matches;
+  });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileAdminSidebarOpen, setMobileAdminSidebarOpen] = useState(false);
+  const [adminSidebarDismissed, setAdminSidebarDismissed] = useState(false);
 
   const [navKey, setNavKey] = useState<NavKey>('dashboard');
   const [ticketPresetStatus, setTicketPresetStatus] = useState<StatusFilter>('open');
@@ -218,6 +265,12 @@ function App() {
   const [createCategories, setCreateCategories] = useState<CategoryRef[]>([]);
   const [createCustomFieldsRaw, setCreateCustomFieldsRaw] = useState<CustomFieldRecord[]>([]);
   const [createCustomFieldValues, setCreateCustomFieldValues] = useState<Record<string, string>>({});
+  const adminMenuEnabled = canUseAdminMenu(currentPersona.role);
+  const isAdminRoute = isAdminRoutePath(location.pathname);
+  const showAdminSidebar = adminMenuEnabled && isAdminRoute && !adminSidebarDismissed;
+  const shellLayoutPath = isShellLayoutPath(location.pathname);
+  const desktopMainOffset = showAdminSidebar ? 'lg:ml-64' : isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64';
+  const showMobileBackdrop = isMobileViewport && (mobileSidebarOpen || mobileAdminSidebarOpen);
 
   const createCustomFields = useMemo(() => {
     if (!createForm.categoryId) return createCustomFieldsRaw;
@@ -253,6 +306,33 @@ function App() {
   }, [location.pathname, currentPersona.role, ticketPresetStatus, ticketPresetScope]);
 
   useEffect(() => {
+    if (!isAdminRoute) {
+      setAdminSidebarDismissed(false);
+    }
+  }, [isAdminRoute]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 1023px)');
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener('change', syncViewport);
+    return () => media.removeEventListener('change', syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileSidebarOpen(false);
+      setMobileAdminSidebarOpen(false);
+    }
+  }, [isMobileViewport]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+    setMobileAdminSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -272,6 +352,9 @@ function App() {
   }, [currentEmail, refreshKey]);
 
   function handleNavSelect(key: NavKey) {
+    setMobileSidebarOpen(false);
+    setMobileAdminSidebarOpen(false);
+
     if (key === 'dashboard') {
       navigate('/dashboard');
       return;
@@ -295,12 +378,12 @@ function App() {
       navigate('/sla-settings');
       return;
     }
-    if (key === 'reports') {
-      navigate('/reports');
-      return;
-    }
     if (key === 'admin') {
-      navigate('/admin');
+      setAdminSidebarDismissed(false);
+      navigate('/sla-settings');
+      if (isMobileViewport) {
+        setMobileAdminSidebarOpen(true);
+      }
       return;
     }
 
@@ -345,38 +428,61 @@ function App() {
   async function handleCreateTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTicketError(null);
+    const missingRequired = createCustomFields.filter(
+      (f) => f.isRequired && !(createCustomFieldValues[f.id]?.trim?.() ?? '')
+    );
+    if (missingRequired.length > 0) {
+      const names = missingRequired.map((f) => f.name).join(', ');
+      const msg = `Required field(s) must be filled: ${names}`;
+      setTicketError(msg);
+      toast.error(msg);
+      return;
+    }
     try {
-      const customFieldValues = createCustomFields
-        .filter((f) => {
-          const v = createCustomFieldValues[f.id];
-          return v !== undefined && (v !== '' || f.isRequired);
-        })
-        .map((f) => ({
-          customFieldId: f.id,
-          value: createCustomFieldValues[f.id] ?? null
-        }));
+      const customFieldValuesPayload =
+        createCustomFields.length > 0
+          ? createCustomFields.map((f) => ({
+              customFieldId: f.id,
+              value: (createCustomFieldValues[f.id]?.trim?.() ?? '') || null
+            }))
+          : [];
       await createTicket({
         subject: createForm.subject,
         description: createForm.description,
         priority: createForm.priority,
         channel: createForm.channel,
-        assignedTeamId: createForm.assignedTeamId,
+        ...(createForm.assignedTeamId && { assignedTeamId: createForm.assignedTeamId }),
         ...(createForm.categoryId && { categoryId: createForm.categoryId }),
-        ...(customFieldValues.length > 0 && { customFieldValues })
+        ...(customFieldValuesPayload.length > 0 && { customFieldValues: customFieldValuesPayload })
       });
       setCreateForm({ subject: '', description: '', priority: 'P3', channel: 'PORTAL', assignedTeamId: '', categoryId: '' });
       setCreateCustomFieldValues({});
       setShowCreateModal(false);
       setRefreshKey((prev) => prev + 1);
       toast.success('Ticket created successfully.');
-    } catch (error) {
-      setTicketError('Unable to create ticket.');
-      toast.error('Unable to create ticket.');
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error != null && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : 'Unable to create ticket.';
+      const hint =
+        message === 'Missing user header' || message === 'Unknown user'
+          ? ' Ensure you have selected a user (persona) in the top bar and the API is running (e.g. npm run dev in the api app).'
+          : /fetch|network|failed/i.test(message)
+            ? ' Ensure the API is running at the URL in VITE_API_BASE_URL (default http://localhost:3000/api).'
+            : '';
+      const display = message + hint;
+      setTicketError(display);
+      toast.error(display);
     }
   }
 
   const visibleNav = useMemo(() => {
-    const filtered = navItems.filter((item) => item.roles.includes(currentPersona.role));
+    const filtered = navItems
+      .filter((item) => item.roles.includes(currentPersona.role))
+      .filter((item) => !(adminMenuEnabled && item.key === 'sla-settings'));
     return filtered.map((item) => ({
       key: item.key,
       label: item.label,
@@ -399,7 +505,7 @@ function App() {
               : undefined,
       })),
     }));
-  }, [currentPersona.role, ticketCounts]);
+  }, [adminMenuEnabled, currentPersona.role, ticketCounts]);
 
   const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
     dashboard: {
@@ -442,10 +548,6 @@ function App() {
       title: 'SLA Settings',
       subtitle: 'Configure SLA targets per department.'
     },
-    reports: {
-      title: 'Reports',
-      subtitle: 'Operational reporting (coming soon).'
-    },
     admin: {
       title: 'Admin',
       subtitle: 'Configuration and settings.'
@@ -467,6 +569,8 @@ function App() {
     ? 'Manage keyword-based routing logic.'
     : location.pathname.startsWith('/automation')
     ? 'Run actions when tickets are created, status changes, or SLA is at risk.'
+    : location.pathname.startsWith('/reports')
+    ? 'Analytics and insights for helpdesk operations.'
     : location.pathname.startsWith('/audit-log')
     ? 'Ticket changes and actions for compliance and troubleshooting.'
     : location.pathname.startsWith('/categories')
@@ -478,6 +582,16 @@ function App() {
   const viewTitle = viewTitleOverride ?? viewMeta[navKey]?.title ?? 'Dashboard';
   const viewSubtitle =
     viewSubtitleOverride ?? viewMeta[navKey]?.subtitle ?? 'Quick view of your ticket activity and updates.';
+
+  function openMobileNavigation() {
+    if (adminMenuEnabled && isAdminRoute && !adminSidebarDismissed) {
+      setMobileAdminSidebarOpen(true);
+      setMobileSidebarOpen(false);
+      return;
+    }
+    setMobileSidebarOpen(true);
+    setMobileAdminSidebarOpen(false);
+  }
 
   return (
     <div className="min-h-screen overflow-hidden">
@@ -491,14 +605,98 @@ function App() {
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
           onCreateTicket={() => setShowCreateModal(true)}
+          className="z-40 hidden lg:flex"
+          showAdminSidebarTrigger={adminMenuEnabled && !showAdminSidebar}
+          onOpenAdminSidebar={() => {
+            setAdminSidebarDismissed(false);
+            if (!isAdminRoutePath(location.pathname)) {
+              navigate('/sla-settings');
+            }
+          }}
+        />
+        {adminMenuEnabled && (
+          <AdminSidebar
+            visible={showAdminSidebar}
+            role={currentPersona.role}
+            pathname={location.pathname}
+            onBack={() => setAdminSidebarDismissed(true)}
+            onNavigate={(route) => {
+              setAdminSidebarDismissed(false);
+              navigate(route);
+            }}
+            className="hidden lg:block"
+          />
+        )}
+
+        {showMobileBackdrop && (
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              setMobileAdminSidebarOpen(false);
+            }}
+            className="fixed inset-0 z-40 bg-slate-900/35 lg:hidden"
+            aria-label="Close navigation"
+          />
+        )}
+
+        <Sidebar
+          collapsed={false}
+          onToggle={() => setMobileSidebarOpen(false)}
+          hideCollapseToggle
+          items={visibleNav}
+          activeKey={navKey}
+          onSelect={(key) => handleNavSelect(key as NavKey)}
+          currentRole={currentPersona.role}
+          onCreateTicket={() => setShowCreateModal(true)}
+          className={`z-50 lg:hidden ${
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+          }`}
+          showAdminSidebarTrigger={adminMenuEnabled && !mobileAdminSidebarOpen}
+          onOpenAdminSidebar={() => {
+            setAdminSidebarDismissed(false);
+            setMobileSidebarOpen(false);
+            setMobileAdminSidebarOpen(true);
+            if (!isAdminRoutePath(location.pathname)) {
+              navigate('/sla-settings');
+            }
+          }}
         />
 
+        {adminMenuEnabled && (
+          <AdminSidebar
+            visible={mobileAdminSidebarOpen}
+            role={currentPersona.role}
+            pathname={location.pathname}
+            onBack={() => {
+              setMobileAdminSidebarOpen(false);
+              setMobileSidebarOpen(true);
+            }}
+            onNavigate={(route) => {
+              setAdminSidebarDismissed(false);
+              setMobileAdminSidebarOpen(false);
+              setMobileSidebarOpen(false);
+              navigate(route);
+            }}
+            className="z-[60] lg:hidden"
+          />
+        )}
+
         <main
-          className={`flex-1 px-10 transition-all duration-300 h-screen overflow-y-auto ${
-            location.pathname === '/dashboard' || location.pathname === '/tickets' || location.pathname.startsWith('/tickets/') ? 'py-0' : 'py-8'
-          } ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}
+          className={`flex-1 min-w-0 w-full transition-all duration-300 h-screen overflow-y-auto ${
+            shellLayoutPath ? 'py-0' : 'py-8'
+          } ${desktopMainOffset}`}
         >
-          {location.pathname !== '/dashboard' && location.pathname !== '/tickets' && !location.pathname.startsWith('/tickets/') && (
+          <button
+            type="button"
+            onClick={openMobileNavigation}
+            className="fixed left-4 top-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm lg:hidden"
+            aria-label="Open navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          {!shellLayoutPath && (
             <TopBar
               title={viewTitle}
               subtitle={viewSubtitle}
@@ -555,7 +753,24 @@ function App() {
                   <TriageBoardPage
                     refreshKey={refreshKey}
                     teamsList={teamsList}
-                    currentEmail={currentEmail}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
                   />
                 ) : (
                   <Navigate to="/dashboard" replace />
@@ -566,7 +781,28 @@ function App() {
               path="/manager"
               element={
                 currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <ManagerViewsPage refreshKey={refreshKey} teamsList={teamsList} />
+                  <ManagerViewsPage
+                    refreshKey={refreshKey}
+                    teamsList={teamsList}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -576,7 +812,29 @@ function App() {
               path="/team"
               element={
                 currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <TeamPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} />
+                  <TeamPage
+                    refreshKey={refreshKey}
+                    teamsList={teamsList}
+                    role={currentPersona.role}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -585,8 +843,29 @@ function App() {
             <Route
               path="/sla-settings"
               element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <SlaSettingsPage teamsList={teamsList} />
+                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
+                  <SlaSettingsPage
+                    teamsList={teamsList}
+                    role={currentPersona.role}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -596,7 +875,27 @@ function App() {
               path="/reports"
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <ReportsPage />
+                  <ReportsPage
+                    role={currentPersona.role}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -606,7 +905,7 @@ function App() {
               path="/admin"
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <AdminPage role={currentPersona.role} />
+                  <Navigate to="/sla-settings" replace />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -616,7 +915,27 @@ function App() {
               path="/routing"
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <RoutingRulesPage teamsList={teamsList} />
+                  <RoutingRulesPage
+                    teamsList={teamsList}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -626,7 +945,28 @@ function App() {
               path="/automation"
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <AutomationRulesPage role={currentPersona.role} />
+                  <AutomationRulesPage
+                    role={currentPersona.role}
+                    teamsList={teamsList}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -636,7 +976,26 @@ function App() {
               path="/audit-log"
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <AuditLogPage />
+                  <AuditLogPage
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -646,7 +1005,26 @@ function App() {
               path="/categories"
               element={
                 currentPersona.role === 'OWNER' ? (
-                  <CategoriesPage />
+                  <CategoriesPage
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )
@@ -656,7 +1034,27 @@ function App() {
               path="/custom-fields"
               element={
                 currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <CustomFieldsAdminPage />
+                  <CustomFieldsAdminPage
+                    role={currentPersona.role}
+                    headerProps={{
+                      title: viewTitle,
+                      subtitle: viewSubtitle,
+                      currentEmail,
+                      personas,
+                      onEmailChange: setCurrentEmail,
+                      onOpenSearch: commandPalette.open,
+                      notificationProps: {
+                        notifications: notifications.notifications,
+                        unreadCount: notifications.unreadCount,
+                        loading: notifications.loading,
+                        hasMore: notifications.hasMore,
+                        onLoadMore: notifications.loadMore,
+                        onMarkAsRead: notifications.markAsRead,
+                        onMarkAllAsRead: notifications.markAllAsRead,
+                        onRefresh: notifications.refresh
+                      }
+                    }}
+                  />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )

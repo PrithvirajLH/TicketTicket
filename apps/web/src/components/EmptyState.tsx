@@ -23,23 +23,23 @@ export function EmptyState({
     <div
       className={`flex flex-col items-center justify-center text-center ${
         compact ? 'py-6 px-3' : 'py-10 px-6'
-      } rounded-lg border border-border/70 bg-muted/20`}
+      } rounded-xl border border-slate-200 bg-white shadow-soft`}
       role="status"
       aria-label={title}
     >
       <span
-        className={`inline-flex items-center justify-center rounded-full bg-muted/60 text-muted-foreground ${
+        className={`inline-flex items-center justify-center rounded-full bg-slate-100 text-slate-500 ${
           compact ? 'h-10 w-10' : 'h-14 w-14'
         }`}
         aria-hidden
       >
         <IconComponent className={compact ? 'h-5 w-5' : 'h-7 w-7'} />
       </span>
-      <p className={`mt-3 font-semibold text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
+      <p className={`mt-3 font-semibold text-slate-900 ${compact ? 'text-xs' : 'text-sm'}`}>
         {title}
       </p>
       {description && (
-        <p className={`text-muted-foreground ${compact ? 'mt-1 text-[11px]' : 'mt-1 text-sm'}`}>
+        <p className={`text-slate-500 ${compact ? 'mt-1 text-[11px]' : 'mt-1 text-sm'}`}>
           {description}
         </p>
       )}
@@ -49,7 +49,7 @@ export function EmptyState({
             <button
               type="button"
               onClick={primaryAction.onClick}
-              className={`rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+              className={`rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:ring-offset-2 ${
                 compact ? 'text-xs px-3 py-1.5' : 'text-sm'
               }`}
             >
@@ -60,7 +60,7 @@ export function EmptyState({
             <button
               type="button"
               onClick={secondaryAction.onClick}
-              className={`rounded-lg border border-border bg-background px-4 py-2 font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+              className={`rounded-lg border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:ring-offset-2 ${
                 compact ? 'text-xs px-3 py-1.5' : 'text-sm'
               }`}
             >

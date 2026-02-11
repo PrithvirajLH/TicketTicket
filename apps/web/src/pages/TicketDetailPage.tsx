@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Bell, Check, ChevronDown, Clock3, Copy, MessageSquare, Paperclip, Search } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Clock3, Copy, MessageSquare, Paperclip } from 'lucide-react';
 import {
   addTicketMessage,
   ApiError,
@@ -25,6 +25,7 @@ import {
 import { CustomFieldsDisplay } from '../components/CustomFieldRenderer';
 import { MessageBody } from '../components/MessageBody';
 import { RelativeTime } from '../components/RelativeTime';
+import { TopBar } from '../components/TopBar';
 import { TicketDetailSkeleton } from '../components/skeletons';
 import type { Role } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
@@ -110,16 +111,17 @@ export function TicketDetailPage({
   const [attachmentUploading, setAttachmentUploading] = useState(false);
 
   const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [interfaceMode, setInterfaceMode] = useState('Agent View');
   const [expandedSections, setExpandedSections] = useState({
     edit: true,
     followers: false,
     additional: false,
     history: false,
   });
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const conversationListRef = useRef<HTMLDivElement | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
 
   const activeTicketIdRef = useRef<string | null>(null);
@@ -183,8 +185,36 @@ export function TicketDetailPage({
   }, [ticket?.id, ticket?.status, availableTransitions]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket?.id, messages.length]);
+    if (activeTab !== 'conversation') return;
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+
+    const onScroll = () => {
+      const distanceFromBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
+      setShowJumpToLatest(distanceFromBottom > 250);
+    };
+
+    listEl.addEventListener('scroll', onScroll);
+    onScroll();
+    return () => listEl.removeEventListener('scroll', onScroll);
+  }, [activeTab, ticket?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'conversation') return;
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+    listEl.scrollTop = listEl.scrollHeight;
+  }, [ticket?.id, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'conversation') return;
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+    const distanceFromBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
+    if (distanceFromBottom <= 180) {
+      listEl.scrollTop = listEl.scrollHeight;
+    }
+  }, [messages.length, activeTab]);
 
   useEffect(() => {
     if (role === 'EMPLOYEE') {
@@ -403,9 +433,14 @@ export function TicketDetailPage({
       const serverMessage = await addTicketMessage(ticketId, { body, type: messageType });
       setMessages((prev) => prev.map((item) => (item.id === optimisticId ? serverMessage : item)));
       void loadEventsPage(ticketId, true);
+      setCopyToast({
+        message: messageType === 'INTERNAL' ? 'Internal note added' : 'Reply sent',
+        type: 'success',
+      });
     } catch {
       setMessages((prev) => prev.filter((item) => item.id !== optimisticId));
       setTicketError('Unable to send message.');
+      setCopyToast({ message: 'Unable to send message.', type: 'error' });
     } finally {
       setMessageSending(false);
     }
@@ -421,8 +456,10 @@ export function TicketDetailPage({
       const updated = await assignTicket(ticket.id, {});
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
+      setCopyToast({ message: 'Assigned to you.', type: 'success' });
     } catch {
       setActionError('Unable to assign ticket.');
+      setCopyToast({ message: 'Unable to assign ticket.', type: 'error' });
     } finally {
       setActionLoading(false);
     }
@@ -438,28 +475,36 @@ export function TicketDetailPage({
       const updated = await assignTicket(ticket.id, { assigneeId: assignToId });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
+      setCopyToast({ message: 'Assignee updated.', type: 'success' });
     } catch {
       setActionError('Unable to assign ticket.');
+      setCopyToast({ message: 'Unable to assign ticket.', type: 'error' });
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function transitionTo(targetStatus: string) {
+    if (!ticket || !targetStatus || targetStatus === ticket.status) {
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const updated = await transitionTicket(ticket.id, { status: targetStatus });
+      setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
+      void loadTicketDetail(ticket.id);
+      setCopyToast({ message: `Status updated to ${formatStatus(targetStatus)}.`, type: 'success' });
+    } catch {
+      setActionError('Unable to change status.');
+      setCopyToast({ message: 'Unable to change status.', type: 'error' });
     } finally {
       setActionLoading(false);
     }
   }
 
   async function handleTransition() {
-    if (!ticket || !nextStatus || nextStatus === ticket.status) {
-      return;
-    }
-    setActionError(null);
-    setActionLoading(true);
-    try {
-      const updated = await transitionTicket(ticket.id, { status: nextStatus });
-      setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      void loadTicketDetail(ticket.id);
-    } catch {
-      setActionError('Unable to change status.');
-    } finally {
-      setActionLoading(false);
-    }
+    await transitionTo(nextStatus);
   }
 
   async function handleTransfer() {
@@ -475,8 +520,10 @@ export function TicketDetailPage({
       });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void loadTicketDetail(ticket.id);
+      setCopyToast({ message: 'Ticket transferred.', type: 'success' });
     } catch {
       setActionError('Unable to transfer ticket.');
+      setCopyToast({ message: 'Unable to transfer ticket.', type: 'error' });
     } finally {
       setActionLoading(false);
     }
@@ -495,8 +542,10 @@ export function TicketDetailPage({
         await followTicket(ticket.id);
       }
       void loadTicketDetail(ticket.id);
+      setCopyToast({ message: isFollowing ? 'Unfollowed ticket.' : 'Following ticket.', type: 'success' });
     } catch {
       setFollowError('Unable to update followers.');
+      setCopyToast({ message: 'Unable to update followers.', type: 'error' });
     } finally {
       setFollowLoading(false);
     }
@@ -518,8 +567,10 @@ export function TicketDetailPage({
         await uploadTicketAttachment(ticketId, file);
       }
       void loadTicketDetail(ticketId);
+      setCopyToast({ message: 'Attachment uploaded.', type: 'success' });
     } catch {
       setAttachmentError('Unable to upload attachment.');
+      setCopyToast({ message: 'Unable to upload attachment.', type: 'error' });
     } finally {
       setAttachmentUploading(false);
       event.target.value = '';
@@ -562,21 +613,28 @@ export function TicketDetailPage({
     }));
   }
 
-  const firstAttachment = ticket?.attachments[0] ?? null;
+  function scrollToLatest() {
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+    listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' });
+  }
+
+  const conversationCount = messages.length;
+  const timelineCount = events.length;
 
   return (
-    <section className="min-w-0 bg-gray-50" title={headerTitle}>
+    <section className="min-h-full bg-slate-50 animate-fade-in" title={headerTitle}>
       {copyToast && (
         <div className="fixed right-4 top-4 z-50">
           <div
-            className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-lg ${
+            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${
               copyToast.type === 'success'
-                ? 'border-green-200 bg-white text-gray-900'
-                : 'border-red-200 bg-red-50 text-red-700'
+                ? 'border-emerald-200 text-slate-900'
+                : 'border-rose-200 text-rose-700'
             }`}
           >
             {copyToast.type === 'success' ? (
-              <Check className="h-5 w-5 text-green-600" />
+              <Check className="h-5 w-5 text-emerald-600" />
             ) : (
               <Clock3 className="h-5 w-5" />
             )}
@@ -585,95 +643,110 @@ export function TicketDetailPage({
         </div>
       )}
 
-      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-3">
+          <TopBar
+            title={headerTitle}
+            subtitle={headerProps?.subtitle ?? 'Review context, collaborate, and update workflow in one workspace.'}
+            currentEmail={headerProps?.currentEmail ?? currentEmail}
+            personas={headerProps?.personas ?? [{ label: currentEmail, email: currentEmail }]}
+            onEmailChange={headerProps?.onEmailChange ?? (() => {})}
+            onOpenSearch={headerProps?.onOpenSearch}
+            notificationProps={headerProps?.notificationProps}
+            leftAction={
               <button
                 type="button"
                 onClick={() => navigate('/tickets')}
-                className="flex items-center text-gray-600 hover:text-gray-900"
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               >
-                <ArrowLeft className="mr-2 h-5 w-5" />
-                Back to tickets
+                <ArrowLeft className="h-4 w-4" />
+                Back
               </button>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={headerProps?.onOpenSearch}
-                className="p-2 text-gray-600 hover:text-gray-900"
-                aria-label="Search"
-              >
-                <Search className="h-5 w-5" />
-              </button>
-              <select
-                value={interfaceMode}
-                onChange={(event) => setInterfaceMode(event.target.value)}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-                aria-label="View mode"
-              >
-                <option>Agent View</option>
-                <option>Manager View</option>
-              </select>
-              <button type="button" className="relative p-2 text-gray-600 hover:text-gray-900" aria-label="Notifications">
-                <Bell className="h-5 w-5" />
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
-              </button>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-                {initialsFor(headerProps?.currentEmail ?? currentEmail)}
+            }
+            leftContent={
+              ticket ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-slate-500">{formatTicketId(ticket)}</span>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}>
+                    {formatStatus(ticket.status)}
+                  </span>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}>
+                    {formatPriority(ticket.priority)}
+                  </span>
+                  <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                    {formatChannel(ticket.channel)}
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <h1 className="text-xl font-semibold text-slate-900">Ticket details</h1>
+                  <p className="text-sm text-slate-500">
+                    Review context, collaborate, and update workflow in one workspace.
+                  </p>
+                </div>
+              )
+            }
+          />
+        </div>
+
+        {ticket && (
+          <div className="border-t border-slate-200 bg-white">
+            <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">{ticket.subject}</h1>
+                  {ticket.description ? (
+                    <p className="mt-1 text-sm text-slate-600">{ticket.description}</p>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-500">No description provided.</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>
+                      Created <RelativeTime value={ticket.createdAt} />
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span>
+                      Requester:{' '}
+                      <span className="font-medium text-slate-800">
+                        {ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}
+                      </span>
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span>
+                      Assignee:{' '}
+                      <span className="font-medium text-slate-800">
+                        {ticket.assignee?.displayName ?? 'Unassigned'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyLink()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('conversation');
+                      messageInputRef.current?.focus();
+                    }}
+                    className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Reply
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {ticket && (
-        <div className="border-b border-gray-200 bg-white">
-          <div className="px-6 py-4">
-            <div className="mb-3 flex items-start justify-between">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-gray-600">{formatTicketId(ticket)}</span>
-                <span className="text-gray-300">|</span>
-                <span className={`rounded-md px-2 py-1 text-xs font-medium ${statusBadgeClass(ticket.status)}`}>
-                  {formatStatus(ticket.status)}
-                </span>
-                <span className={`rounded-md px-2 py-1 text-xs font-medium ${priorityBadgeClass(ticket.priority)}`}>
-                  {formatPriority(ticket.priority)}
-                </span>
-                <span className="rounded-md bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
-                  {formatChannel(ticket.channel)}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="flex items-center text-sm text-blue-600 hover:text-blue-700"
-              >
-                <Copy className="mr-1 h-4 w-4" />
-                Copy link
-              </button>
-            </div>
-            <h1 className="mb-2 text-xl font-semibold text-gray-900">{ticket.subject}</h1>
-            {ticket.description && <p className="mb-3 text-sm text-gray-600">{ticket.description}</p>}
-            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 sm:gap-4">
-              <span>
-                Created <RelativeTime value={ticket.createdAt} />
-              </span>
-              <span className="hidden sm:inline">•</span>
-              <span>
-                Requester: <span className="text-gray-900">{ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}</span>
-              </span>
-              <span className="hidden sm:inline">•</span>
-              <span>
-                Assignee: <span className="text-gray-900">{ticket.assignee?.displayName ?? 'Unassigned'}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="mx-auto max-w-[1600px] px-6 py-6">
+      <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-6">
         {ticketError && <p className="mb-4 text-sm text-red-600">{ticketError}</p>}
         {accessDenied && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
@@ -683,423 +756,534 @@ export function TicketDetailPage({
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="xl:col-span-2">
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-              <div className="border-b border-gray-200 px-6 pt-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex space-x-6">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('conversation')}
-                      className={`pb-3 px-1 text-sm font-medium ${
-                        activeTab === 'conversation'
-                          ? 'border-b-2 border-blue-500 text-blue-500'
-                          : 'text-gray-500 hover:text-gray-700'
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('conversation')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                      activeTab === 'conversation'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    Conversation
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+                        activeTab === 'conversation' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      Conversation
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('timeline')}
-                      className={`pb-3 px-1 text-sm font-medium ${
-                        activeTab === 'timeline'
-                          ? 'border-b-2 border-blue-500 text-blue-500'
-                          : 'text-gray-500 hover:text-gray-700'
+                      {conversationCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('timeline')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                      activeTab === 'timeline'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    Timeline
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+                        activeTab === 'timeline' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      Timeline
-                    </button>
-                  </div>
-                  <div className="flex items-center space-x-2 pb-2 text-xs text-gray-500">
-                    <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1">R</kbd>
-                    <span>Reply</span>
-                    {canManage && (
-                      <>
-                        <span className="mx-1">•</span>
-                        <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1">A</kbd>
-                        <span>Assign</span>
-                        <span className="mx-1">•</span>
-                        <kbd className="rounded border border-gray-300 bg-gray-100 px-2 py-1">S</kbd>
-                        <span>Status</span>
-                      </>
-                    )}
-                  </div>
+                      {timelineCount}
+                    </span>
+                  </button>
+                </div>
+                <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
+                  <span className="inline-flex items-center gap-1">
+                    <kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">R</kbd> Reply
+                  </span>
+                  {canManage ? (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">A</kbd> Assign
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">S</kbd> Status
+                      </span>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
-              <div className="p-6">
-                {loadingDetail && !ticket && <TicketDetailSkeleton count={4} />}
-                {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-gray-500">Ticket not found.</p>}
+              <div className="relative">
+                {loadingDetail && !ticket ? <div className="p-6"><TicketDetailSkeleton count={4} /></div> : null}
+                {!loadingDetail && !ticket && !accessDenied ? (
+                  <p className="p-6 text-sm text-slate-500">Ticket not found.</p>
+                ) : null}
 
-                {ticket && activeTab === 'conversation' && (
+                {ticket && activeTab === 'conversation' ? (
                   <>
-                    <div className="mb-6 max-h-[600px] space-y-4 overflow-y-auto">
-                      {messagesHasMore && (
+                    <div className="px-4 pt-5 sm:px-6">
+                      {messagesHasMore ? (
                         <button
                           type="button"
                           onClick={() => ticketId && void loadMessagesPage(ticketId)}
                           disabled={messagesLoading}
-                          className="mb-4 text-sm text-blue-600 hover:text-blue-700"
+                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
                         >
                           {messagesLoading ? 'Loading...' : '↑ Load older messages'}
                         </button>
-                      )}
+                      ) : null}
+                    </div>
 
-                      {messages.length === 0 && !messagesLoading && (
-                        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
+                    <div
+                      ref={conversationListRef}
+                      className="max-h-[560px] space-y-4 overflow-y-auto px-4 py-5 sm:px-6"
+                    >
+                      {messages.length === 0 && !messagesLoading ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
                           No messages yet.
                         </div>
-                      )}
+                      ) : null}
 
                       {messages.map((message) => {
                         const isCurrentUser = message.author?.email === currentEmail;
                         const isInternal = message.type === 'INTERNAL';
-                        const isRequester =
-                          message.author?.id === ticket.requester?.id ||
-                          message.author?.email === ticket.requester?.email;
+                        const initials = initialsFor(message.author?.displayName ?? message.author?.email ?? 'U');
 
                         return (
-                          <div key={message.id}>
-                            <div className={`flex items-start gap-3 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
-                              <div
-                                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                                  isRequester ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
-                                }`}
-                              >
-                                {initialsFor(message.author?.displayName ?? message.author?.email ?? 'U')}
-                              </div>
-                              <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
-                                <div className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : ''}`}>
-                                  <span className="text-sm font-medium text-gray-900">
+                          <div key={message.id} className="animate-fade-in">
+                            <div className={`flex items-start gap-3 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                              {!isCurrentUser ? (
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700">
+                                  {initials}
+                                </div>
+                              ) : null}
+
+                              <div className={`max-w-[78%] sm:max-w-[70%] ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+                                <div className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                                  <span className="text-sm font-semibold text-slate-900">
                                     {message.author?.displayName ?? message.author?.email ?? 'Unknown'}
                                   </span>
-                                  {isInternal && (
-                                    <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                                  {isInternal ? (
+                                    <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                                       Internal
                                     </span>
-                                  )}
-                                  <span className="text-xs text-gray-500">
+                                  ) : null}
+                                  <span className="text-xs text-slate-500">
                                     <RelativeTime value={message.createdAt} />
                                   </span>
                                 </div>
+
                                 <div
-                                  className={`inline-block rounded-lg p-3 ${
-                                    isInternal
-                                      ? 'border border-yellow-200 bg-yellow-50 text-gray-900'
-                                      : isCurrentUser
-                                        ? 'bg-blue-50 text-gray-900'
-                                        : 'bg-gray-50 text-gray-900'
+                                  className={`rounded-2xl border px-4 py-3 text-sm leading-relaxed ${
+                                    isCurrentUser
+                                      ? 'border-blue-600 bg-blue-600 text-white'
+                                      : isInternal
+                                        ? 'border-amber-200 bg-amber-50 text-slate-900'
+                                        : 'border-slate-200 bg-white text-slate-900'
                                   }`}
                                 >
                                   <MessageBody body={message.body} />
                                 </div>
                               </div>
+
+                              {isCurrentUser ? (
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-xs font-bold text-white shadow-soft">
+                                  {initials}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         );
                       })}
-                      <div ref={messagesEndRef} />
                     </div>
 
-                    <div className="border-t border-gray-200 pt-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                    {showJumpToLatest ? (
+                      <div className="absolute bottom-[108px] left-1/2 -translate-x-1/2">
+                        <button
+                          type="button"
+                          onClick={scrollToLatest}
+                          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-slate-800"
+                        >
+                          Jump to latest ↓
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
                           <button
                             type="button"
                             onClick={() => setMessageType('PUBLIC')}
-                            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                              messageType === 'PUBLIC'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                              messageType === 'PUBLIC' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'
                             }`}
                           >
-                            Public Reply
+                            Public
                           </button>
-                          {canManage && (
+                          {canManage ? (
                             <button
                               type="button"
                               onClick={() => setMessageType('INTERNAL')}
-                              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
                                 messageType === 'INTERNAL'
-                                  ? 'bg-yellow-600 text-white'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  ? 'bg-amber-600 text-white'
+                                  : 'text-slate-700 hover:bg-slate-100'
                               }`}
                             >
-                              Internal Note
+                              Internal
                             </button>
-                          )}
+                          ) : null}
                         </div>
-                        {canUpload && (
-                          <label className="cursor-pointer text-gray-600 hover:text-gray-900">
-                            <Paperclip className="h-5 w-5" />
-                            <input
-                              type="file"
-                              multiple
-                              className="sr-only"
-                              onChange={handleAttachmentUpload}
-                              disabled={attachmentUploading}
-                            />
-                          </label>
-                        )}
+
+                        <div className="flex items-center gap-2">
+                          {canUpload ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => attachmentInputRef.current?.click()}
+                                className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                title="Attach file"
+                                aria-label="Attach file"
+                              >
+                                <Paperclip className="h-5 w-5" />
+                              </button>
+                              <input
+                                ref={attachmentInputRef}
+                                type="file"
+                                multiple
+                                className="sr-only"
+                                onChange={handleAttachmentUpload}
+                                disabled={attachmentUploading}
+                              />
+                            </>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void handleReply()}
+                            disabled={!messageBody.trim() || messageSending}
+                            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {messageSending ? 'Sending...' : 'Send'}
+                          </button>
+                        </div>
                       </div>
 
                       <textarea
                         ref={messageInputRef}
                         value={messageBody}
                         onChange={(event) => setMessageBody(event.target.value)}
-                        placeholder={messageType === 'INTERNAL' ? 'Type internal note...' : 'Type your message...'}
+                        placeholder={messageType === 'INTERNAL' ? 'Add an internal note...' : 'Write a reply...'}
                         rows={4}
-                        className="w-full resize-none rounded-md border border-gray-300 p-3 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="mt-3 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-blue-500"
                       />
 
-                      <div className="mt-3 flex items-center justify-between">
-                        <div className="text-xs text-gray-500">
-                          {firstAttachment ? (
-                            <>
-                              Attachments:{' '}
+                      {ticket.attachments.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {ticket.attachments.map((attachment) => (
+                            <div
+                              key={attachment.id}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700"
+                            >
+                              <Paperclip className="h-4 w-4 text-slate-500" />
+                              <span className="font-semibold">{attachment.fileName}</span>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-slate-500">{formatFileSize(attachment.sizeBytes)}</span>
                               <button
                                 type="button"
-                                onClick={() => void handleAttachmentView(firstAttachment.id)}
-                                className="text-blue-600 hover:underline"
+                                onClick={() => void handleAttachmentView(attachment.id)}
+                                className="rounded-full p-1 text-blue-600 hover:bg-slate-100 hover:text-blue-700"
                               >
-                                {firstAttachment.fileName}
-                              </button>{' '}
+                                View
+                              </button>
                               <button
                                 type="button"
-                                onClick={() => void handleAttachmentDownload(firstAttachment.id, firstAttachment.fileName)}
-                                className="text-blue-600 hover:underline"
+                                onClick={() => void handleAttachmentDownload(attachment.id, attachment.fileName)}
+                                className="rounded-full p-1 text-blue-600 hover:bg-slate-100 hover:text-blue-700"
                               >
-                                download
-                              </button>{' '}
-                              ({formatFileSize(firstAttachment.sizeBytes)})
-                              {ticket.attachments.length > 1 && ` +${ticket.attachments.length - 1} more`}
-                            </>
-                          ) : (
-                            'Attachments: None'
-                          )}
+                                Download
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleReply()}
-                          disabled={!messageBody.trim() || messageSending}
-                          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          {messageSending ? 'Sending...' : 'Send'}
-                        </button>
-                      </div>
-                      {attachmentError && <p className="mt-2 text-xs text-red-600">{attachmentError}</p>}
+                      ) : null}
+                      {attachmentError ? <p className="mt-2 text-xs text-rose-600">{attachmentError}</p> : null}
                     </div>
                   </>
-                )}
+                ) : null}
 
-                {ticket && activeTab === 'timeline' && (
-                  <div className="max-h-[600px] space-y-4 overflow-y-auto">
-                    {eventsHasMore && (
+                {ticket && activeTab === 'timeline' ? (
+                  <div className="px-4 py-5 sm:px-6">
+                    {eventsHasMore ? (
                       <button
                         type="button"
                         onClick={() => ticketId && void loadEventsPage(ticketId)}
                         disabled={eventsLoading}
-                        className="mb-4 text-sm text-blue-600 hover:text-blue-700"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
                       >
                         {eventsLoading ? 'Loading...' : '↑ Load older events'}
                       </button>
-                    )}
+                    ) : null}
 
-                    {events.length === 0 && !eventsLoading && (
-                      <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
-                        No events yet.
-                      </div>
-                    )}
-
-                    {events.map((event, index) => {
-                      const eventKind = getEventKind(event);
-                      return (
-                        <div key={event.id} className="flex items-start gap-3">
-                          <div className="relative">
-                            <div
-                              className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                                eventKind === 'message'
-                                  ? 'bg-blue-100'
-                                  : eventKind === 'internal'
-                                    ? 'bg-yellow-100'
-                                    : 'bg-gray-100'
-                              }`}
-                            >
-                              {eventKind === 'message' || eventKind === 'internal' ? (
-                                <MessageSquare className="h-4 w-4 text-blue-600" />
-                              ) : (
-                                <Clock3 className="h-4 w-4 text-gray-600" />
-                              )}
-                            </div>
-                            {index < events.length - 1 && <div className="absolute left-4 top-8 h-8 w-px bg-gray-200" />}
-                          </div>
-                          <div className="flex-1 pt-1">
-                            <p className="text-sm text-gray-900">{formatEventText(event)}</p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              <RelativeTime value={event.createdAt} />
-                            </p>
-                          </div>
+                    <div className="mt-5 max-h-[660px] space-y-4 overflow-y-auto">
+                      {events.length === 0 && !eventsLoading ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                          No events yet.
                         </div>
-                      );
-                    })}
+                      ) : null}
+
+                      {events.map((event, index) => {
+                        const eventKind = getEventKind(event);
+                        return (
+                          <div key={event.id} className="flex items-start gap-3">
+                            <div className="relative">
+                              <div
+                                className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+                                  eventKind === 'message'
+                                    ? 'border-blue-200 bg-blue-50'
+                                    : eventKind === 'internal'
+                                      ? 'border-amber-200 bg-amber-50'
+                                      : 'border-slate-200 bg-slate-100'
+                                }`}
+                              >
+                                {eventKind === 'message' || eventKind === 'internal' ? (
+                                  <MessageSquare className="h-4 w-4 text-slate-600" />
+                                ) : (
+                                  <Clock3 className="h-4 w-4 text-slate-600" />
+                                )}
+                              </div>
+                              {index < events.length - 1 ? (
+                                <div className="absolute left-1/2 top-9 h-6 w-px -translate-x-1/2 bg-slate-200" />
+                              ) : null}
+                            </div>
+                            <div className="pt-1">
+                              <p className="text-sm text-slate-900">{formatEventText(event)}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                <RelativeTime value={event.createdAt} />
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
 
-          <aside className="space-y-4 xl:col-span-1">
+          <aside className="space-y-4 xl:sticky xl:top-[160px] xl:col-span-1 xl:h-fit">
             {ticket && (
-              <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                <h3 className="mb-3 text-sm font-semibold text-gray-900">SLA Overview</h3>
-                <div className="space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900">SLA Overview</h3>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${slaBadgeClass(getResolutionSla(ticket).label)}`}>
+                    {getResolutionSla(ticket).label}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
                   {renderSlaCard('First Response', getFirstResponseSla(ticket))}
-                  {renderSlaCard('Resolution SLA', getResolutionSla(ticket))}
+                  {renderSlaCard('Resolution', getResolutionSla(ticket))}
                 </div>
               </div>
             )}
 
             {canManage && (
-              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => toggleSection('edit')}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <span className="text-sm font-semibold text-gray-900">Edit Ticket</span>
-                  <ChevronDown
-                    className={`h-5 w-5 text-gray-500 transition-transform ${expandedSections.edit ? 'rotate-180' : ''}`}
-                  />
-                </button>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+                <h3 className="text-sm font-semibold text-slate-900">Quick Actions</h3>
+                {actionError && <p className="mt-2 text-xs text-rose-600">{actionError}</p>}
 
-                {expandedSections.edit && (
-                  <div className="space-y-4 px-4 pb-4">
-                    {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-700">Assign to</label>
-                      <div className="flex space-x-2">
-                        <select
-                          value={assignToId}
-                          onChange={(event) => setAssignToId(event.target.value)}
-                          disabled={membersLoading || actionLoading || teamMembers.length === 0}
-                          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          <option value="">{membersLoading ? 'Loading team...' : 'Select assignee'}</option>
-                          {teamMembers.map((member) => (
-                            <option key={member.id} value={member.user.id}>
-                              {member.user.displayName}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void handleAssignMember()}
-                          disabled={!assignToId || actionLoading}
-                          className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                        >
-                          Assign
-                        </button>
-                      </div>
-                      {!ticket?.assignee && (
-                        <button
-                          type="button"
-                          onClick={() => void handleAssignSelf()}
-                          disabled={actionLoading}
-                          className="mt-2 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                        >
-                          Assign to me
-                        </button>
-                      )}
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">Assign</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={assignToId}
+                        onChange={(event) => setAssignToId(event.target.value)}
+                        disabled={membersLoading || actionLoading || teamMembers.length === 0}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">{membersLoading ? 'Loading team...' : 'Select assignee'}</option>
+                        {teamMembers.map((member) => (
+                          <option key={member.id} value={member.user.id}>
+                            {member.user.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleAssignMember()}
+                        disabled={!assignToId || actionLoading}
+                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        Assign
+                      </button>
                     </div>
+                    {!ticket?.assignee && (
+                      <button
+                        type="button"
+                        onClick={() => void handleAssignSelf()}
+                        disabled={actionLoading}
+                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                      >
+                        Assign to me
+                      </button>
+                    )}
+                  </div>
 
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-700">Change status</label>
-                      <div className="flex space-x-2">
-                        <select
-                          ref={statusSelectRef}
-                          value={nextStatus}
-                          onChange={(event) => setNextStatus(event.target.value)}
-                          disabled={actionLoading || availableTransitions.length === 0}
-                          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          {availableTransitions.length === 0 && <option value="">No transitions</option>}
-                          {availableTransitions.map((status) => (
-                            <option key={status} value={status}>
-                              {formatStatus(status)}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void handleTransition()}
-                          disabled={actionLoading || !nextStatus || nextStatus === ticket?.status}
-                          className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                        >
-                          Update
-                        </button>
-                      </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">Status</label>
+                    <div className="flex gap-2">
+                      <select
+                        ref={statusSelectRef}
+                        value={nextStatus}
+                        onChange={(event) => setNextStatus(event.target.value)}
+                        disabled={actionLoading || availableTransitions.length === 0}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {availableTransitions.length === 0 && <option value="">No transitions</option>}
+                        {availableTransitions.map((status) => (
+                          <option key={status} value={status}>
+                            {formatStatus(status)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleTransition()}
+                        disabled={actionLoading || !nextStatus || nextStatus === ticket?.status}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Update
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-700">Transfer to</label>
-                      <div className="space-y-2">
-                        <select
-                          value={transferTeamId}
-                          onChange={(event) => setTransferTeamId(event.target.value)}
-                          disabled={actionLoading}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          <option value="">Select department</option>
-                          {teamsList.map((team) => (
-                            <option key={team.id} value={team.id}>
-                              {team.name}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={transferAssigneeId}
-                          onChange={(event) => setTransferAssigneeId(event.target.value)}
-                          disabled={actionLoading || !transferTeamId}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          <option value="">Select assignee</option>
-                          {transferMembers.map((member) => (
-                            <option key={member.id} value={member.user.id}>
-                              {member.user.displayName}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void handleTransfer()}
-                          disabled={actionLoading || !transferTeamId || transferTeamId === ticket?.assignedTeam?.id}
-                          className="w-full rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-                        >
-                          Transfer
-                        </button>
-                      </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void transitionTo('RESOLVED')}
+                        disabled={actionLoading || !availableTransitions.includes('RESOLVED')}
+                        className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Resolve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          availableTransitions.includes('WAITING_ON_VENDOR')
+                            ? void transitionTo('WAITING_ON_VENDOR')
+                            : availableTransitions.includes('TRIAGED')
+                              ? void transitionTo('TRIAGED')
+                              : undefined
+                        }
+                        disabled={
+                          actionLoading ||
+                          (!availableTransitions.includes('WAITING_ON_VENDOR') &&
+                            !availableTransitions.includes('TRIAGED'))
+                        }
+                        className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        Escalate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void transitionTo('CLOSED')}
+                        disabled={actionLoading || !availableTransitions.includes('CLOSED')}
+                        className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        Close
+                      </button>
                     </div>
                   </div>
-                )}
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">Transfer</label>
+                    <div className="space-y-2">
+                      <select
+                        value={transferTeamId}
+                        onChange={(event) => setTransferTeamId(event.target.value)}
+                        disabled={actionLoading}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select department</option>
+                        {teamsList.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={transferAssigneeId}
+                        onChange={(event) => setTransferAssigneeId(event.target.value)}
+                        disabled={actionLoading || !transferTeamId}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select assignee</option>
+                        {transferMembers.map((member) => (
+                          <option key={member.id} value={member.user.id}>
+                            {member.user.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleTransfer()}
+                        disabled={actionLoading || !transferTeamId || transferTeamId === ticket?.assignedTeam?.id}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Transfer
+                      </button>
+                      <p className="text-xs text-slate-500">Tip: transferring to the same team is blocked.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
-            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-sm font-semibold text-gray-900">Ticket Details</h3>
-              <TicketDetailsCard ticket={ticket} loading={loadingDetail} />
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+              <button
+                type="button"
+                onClick={() => toggleSection('edit')}
+                className="flex w-full items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-sm font-semibold text-slate-900">Ticket Details</span>
+                <ChevronDown
+                  className={`h-5 w-5 text-slate-500 transition-transform ${expandedSections.edit ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {expandedSections.edit && (
+                <div className="space-y-2 px-4 pb-4 text-sm">
+                  {loadingDetail && (
+                    <div className="space-y-2">
+                      <div className="h-4 w-28 rounded bg-slate-200" />
+                      <div className="h-4 w-40 rounded bg-slate-100" />
+                    </div>
+                  )}
+                  {!loadingDetail && ticket && (
+                    <>
+                      <DetailRow label="Requester" value={ticket.requester?.displayName ?? 'Unknown'} />
+                      <DetailRow label="Email" value={ticket.requester?.email ?? '—'} />
+                      <DetailRow label="Department" value={ticket.assignedTeam?.name ?? 'Unassigned'} />
+                      <DetailRow label="Assignee" value={ticket.assignee?.displayName ?? 'Unassigned'} />
+                      <DetailRow label="Category" value={ticket.category?.name ?? 'None'} />
+                      <DetailRow label="Created" value={<RelativeTime value={ticket.createdAt} />} />
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {ticket && (
-              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
                 <button
                   type="button"
                   onClick={() => toggleSection('followers')}
                   className="flex w-full items-center justify-between px-4 py-3 text-left"
                 >
-                  <span className="text-sm font-semibold text-gray-900">Followers ({followers.length})</span>
+                  <span className="text-sm font-semibold text-slate-900">Followers ({followers.length})</span>
                   <ChevronDown
-                    className={`h-5 w-5 text-gray-500 transition-transform ${
+                    className={`h-5 w-5 text-slate-500 transition-transform ${
                       expandedSections.followers ? 'rotate-180' : ''
                     }`}
                   />
@@ -1108,14 +1292,14 @@ export function TicketDetailPage({
                 {expandedSections.followers && (
                   <div className="px-4 pb-4">
                     <div className="mb-3 space-y-2">
-                      {followers.length === 0 && <p className="text-xs text-gray-500">No followers yet.</p>}
+                      {followers.length === 0 && <p className="text-xs text-slate-500">No followers yet.</p>}
                       {followers.map((follower) => (
                         <div key={follower.id} className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
                               {initialsFor(follower.user.displayName)}
                             </div>
-                            <span className="text-sm text-gray-900">{follower.user.displayName}</span>
+                            <span className="text-sm font-semibold text-slate-900">{follower.user.displayName}</span>
                           </div>
                         </div>
                       ))}
@@ -1124,26 +1308,26 @@ export function TicketDetailPage({
                       type="button"
                       onClick={() => void handleFollowToggle()}
                       disabled={followLoading}
-                      className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                      className="w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {isFollowing ? 'Unfollow this ticket' : '+ Follow this ticket'}
+                      {isFollowing ? 'Unfollow ticket' : 'Follow ticket'}
                     </button>
-                    {followError && <p className="mt-2 text-xs text-red-600">{followError}</p>}
+                    {followError && <p className="mt-2 text-xs text-rose-600">{followError}</p>}
                   </div>
                 )}
               </div>
             )}
 
             {ticket && (
-              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
                 <button
                   type="button"
                   onClick={() => toggleSection('additional')}
                   className="flex w-full items-center justify-between px-4 py-3 text-left"
                 >
-                  <span className="text-sm font-semibold text-gray-900">Additional Details</span>
+                  <span className="text-sm font-semibold text-slate-900">Additional Details</span>
                   <ChevronDown
-                    className={`h-5 w-5 text-gray-500 transition-transform ${
+                    className={`h-5 w-5 text-slate-500 transition-transform ${
                       expandedSections.additional ? 'rotate-180' : ''
                     }`}
                   />
@@ -1151,18 +1335,9 @@ export function TicketDetailPage({
 
                 {expandedSections.additional && (
                   <div className="space-y-2 px-4 pb-4 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Reference ID</span>
-                      <span className="text-gray-900">{formatTicketId(ticket)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Source IP</span>
-                      <span className="text-gray-900">192.168.1.1</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Browser</span>
-                      <span className="text-gray-900">Chrome 120</span>
-                    </div>
+                    <DetailRow label="Reference ID" value={formatTicketId(ticket)} />
+                    <DetailRow label="Source IP" value="192.168.1.1" />
+                    <DetailRow label="Browser" value="Chrome 120" />
                     {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
                       <div className="pt-2">
                         <CustomFieldsDisplay values={ticket.customFieldValues} />
@@ -1174,37 +1349,37 @@ export function TicketDetailPage({
             )}
 
             {ticket && (
-              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
                 <button
                   type="button"
                   onClick={() => toggleSection('history')}
                   className="flex w-full items-center justify-between px-4 py-3 text-left"
                 >
-                  <span className="text-sm font-semibold text-gray-900">Status History</span>
+                  <span className="text-sm font-semibold text-slate-900">Status History</span>
                   <ChevronDown
-                    className={`h-5 w-5 text-gray-500 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                    className={`h-5 w-5 text-slate-500 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
                   />
                 </button>
 
                 {expandedSections.history && (
                   <div className="space-y-3 px-4 pb-4">
-                    {statusEvents.length === 0 && <p className="text-xs text-gray-500">No status changes recorded yet.</p>}
+                    {statusEvents.length === 0 && <p className="text-xs text-slate-500">No status changes recorded yet.</p>}
 
                     {statusEvents.map((event) => {
                       const payload = (event.payload ?? {}) as { from?: string; to?: string };
                       const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
                       return (
-                        <div key={event.id} className="text-xs">
+                        <div key={event.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
                           <div className="mb-1 flex items-center justify-between">
-                            <span className="text-gray-600">
+                            <span className="font-semibold text-slate-700">
                               {payload.from ? formatStatus(payload.from) : 'Unknown'} →{' '}
                               {payload.to ? formatStatus(payload.to) : formatStatus(ticket.status)}
                             </span>
-                            <span className="text-gray-500">
+                            <span className="text-slate-500">
                               <RelativeTime value={event.createdAt} />
                             </span>
                           </div>
-                          <p className="text-gray-500">By {actor}</p>
+                          <p className="text-slate-500">By {actor}</p>
                         </div>
                       );
                     })}
@@ -1219,54 +1394,20 @@ export function TicketDetailPage({
   );
 }
 
-function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="animate-pulse">
-        <div className="space-y-3">
-          <div className="h-4 w-28 rounded bg-gray-200" />
-          <div className="h-3 w-40 rounded bg-gray-100" />
-          <div className="h-3 w-full rounded bg-gray-200" />
-          <div className="h-3 w-3/4 rounded bg-gray-100" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!ticket) {
-    return null;
-  }
-
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="space-y-2 text-sm">
-      <div className="flex justify-between">
-        <span className="text-gray-600">Requester</span>
-        <span className="font-medium text-gray-900">{ticket.requester?.displayName ?? 'Unknown'}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-gray-600">Email</span>
-        <span className="text-gray-900">{ticket.requester?.email ?? '—'}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-gray-600">Department</span>
-        <span className="text-gray-900">{ticket.assignedTeam?.name ?? 'Unassigned'}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-gray-600">Assignee</span>
-        <span className="font-medium text-gray-900">{ticket.assignee?.displayName ?? 'Unassigned'}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-gray-600">Category</span>
-        <span className="text-gray-900">{ticket.category?.name ?? 'None'}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-gray-600">Created</span>
-        <span className="text-gray-900">
-          <RelativeTime value={ticket.createdAt} />
-        </span>
-      </div>
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-slate-500">{label}</span>
+      <span className="text-right font-semibold text-slate-900">{value}</span>
     </div>
   );
+}
+
+function slaBadgeClass(label?: string) {
+  if (label === 'Met' || label === 'On Track' || label === 'Open') return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200';
+  if (label === 'At Risk' || label === 'Paused') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+  if (label === 'Breached') return 'bg-rose-50 text-rose-700 ring-1 ring-rose-200';
+  return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
 }
 
 const SLA_RISK_WINDOW_MS = 4 * 60 * 60 * 1000;
@@ -1274,10 +1415,10 @@ const SLA_FIRST_RESPONSE_RISK_MS = 2 * 60 * 60 * 1000;
 
 function renderSlaCard(label: string, sla: { label: string; tone: string; detail: ReactNode }) {
   return (
-    <div className={`rounded-md border p-3 ${sla.tone}`}>
+    <div className={`rounded-xl border p-3 ${sla.tone}`}>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-xs font-medium">{label}</span>
-        <span className="text-xs">{sla.label}</span>
+        <span className="text-xs font-semibold">{label}</span>
+        <span className="text-xs font-bold">{sla.label}</span>
       </div>
       <p className="text-xs">{sla.detail}</p>
     </div>

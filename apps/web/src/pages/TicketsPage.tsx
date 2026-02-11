@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   bulkAssignTickets,
@@ -210,271 +210,353 @@ export function TicketsPage({
 
   const pageStart = listMeta ? (listMeta.page - 1) * listMeta.pageSize + 1 : 0;
   const pageEnd = listMeta ? Math.min(listMeta.page * listMeta.pageSize, listMeta.total) : 0;
+  const visiblePages = useMemo(() => {
+    if (!listMeta) return [] as number[];
+    const current = listMeta.page;
+    const total = listMeta.totalPages;
+    if (total <= 3) return Array.from({ length: total }, (_, index) => index + 1);
+    if (current <= 2) return [1, 2, 3];
+    if (current >= total - 1) return [total - 2, total - 1, total];
+    return [current - 1, current, current + 1];
+  }, [listMeta]);
 
   return (
-    <section className="min-w-0 animate-fade-in">
-      <div className="mx-auto max-w-[1600px] min-w-0">
-        <div className="rounded-2xl border border-border bg-card shadow-card">
-          <header className="border-b border-border px-6 py-5">
-            {headerProps ? (
-              <TopBar
-                title={headerProps.title}
-                subtitle={headerProps.subtitle}
-                currentEmail={headerProps.currentEmail}
-                personas={headerProps.personas}
-                onEmailChange={headerProps.onEmailChange}
-                onOpenSearch={headerProps.onOpenSearch}
-                notificationProps={headerProps.notificationProps}
-              />
-            ) : (
-              <>
-                <h2 className="text-4xl font-semibold leading-tight text-foreground">All Tickets</h2>
-                <p className="mt-1 text-lg text-muted-foreground">
-                  Track, filter, and manage your support requests.
-                </p>
-              </>
-            )}
-          </header>
+    <section className="min-h-full bg-gray-50 animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
+          {headerProps ? (
+            <TopBar
+              title={headerProps.title}
+              subtitle={headerProps.subtitle}
+              currentEmail={headerProps.currentEmail}
+              personas={headerProps.personas}
+              onEmailChange={headerProps.onEmailChange}
+              onOpenSearch={headerProps.onOpenSearch}
+              notificationProps={headerProps.notificationProps}
+              leftContent={
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-xl font-semibold text-gray-900">Tickets</h1>
+                  <span className="text-sm text-gray-500">({totalCount} tickets)</span>
+                </div>
+              }
+            />
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-xl font-semibold text-gray-900">Tickets</h1>
+                <span className="text-sm text-gray-500">({totalCount} tickets)</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
-          <div className="border-b border-border bg-muted/[0.12] px-6 py-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {role !== 'EMPLOYEE' ? (
+      <div className="border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 border-r border-gray-200 pr-4">
+              {(['all', 'open', 'resolved'] as StatusFilter[]).map((value) => (
                 <button
+                  key={value}
                   type="button"
-                  onClick={() => setShowAdvancedFilters((prev) => !prev)}
-                  className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${
-                    showAdvancedFilters
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-background text-foreground hover:bg-muted/30'
+                  onClick={() => setFilters({ statusGroup: value })}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    (filters.statusGroup ?? 'all') === value
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
-                  Advanced filter
-                  {activeFilterCount > 0 ? (
-                    <span className="rounded-full border border-primary/30 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold">
-                      {activeFilterCount}
-                    </span>
-                  ) : null}
+                  {value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Resolved'}
                 </button>
-              ) : null}
+              ))}
+            </div>
 
-              <select
-                value={filters.statusGroup ?? 'all'}
-                onChange={(event) => setFilters({ statusGroup: event.target.value as StatusFilter })}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
-              >
-                <option value="all">All statuses</option>
-                <option value="open">Open tickets</option>
-                <option value="resolved">Resolved tickets</option>
-              </select>
+            <div className="relative min-w-[240px] flex-1 max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder="Search tickets by ID or subject..."
+                className="h-10 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              />
+            </div>
 
+            {role !== 'EMPLOYEE' ? (
               <select
                 value={quickAssigneeValue}
                 onChange={(event) => setFilters({ assigneeIds: event.target.value ? [event.target.value] : [] })}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               >
-                <option value="">All assignees</option>
+                <option value="">Assignee</option>
                 {assignableUsers.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.displayName}
                   </option>
                 ))}
               </select>
+            ) : null}
 
-              <select
-                value={quickPriorityValue}
-                onChange={(event) => setFilters({ priorities: event.target.value ? [event.target.value] : [] })}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            <select
+              value={quickPriorityValue}
+              onChange={(event) => setFilters({ priorities: event.target.value ? [event.target.value] : [] })}
+              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            >
+              <option value="">Priority</option>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+              <option value="P4">P4</option>
+            </select>
+
+            <select
+              value={sortPreset}
+              onChange={(event) => {
+                const preset = event.target.value as SortPreset;
+                if (preset === 'updated_desc') setFilters({ sort: 'updatedAt', order: 'desc' });
+                if (preset === 'updated_asc') setFilters({ sort: 'updatedAt', order: 'asc' });
+                if (preset === 'created_desc') setFilters({ sort: 'createdAt', order: 'desc' });
+                if (preset === 'created_asc') setFilters({ sort: 'createdAt', order: 'asc' });
+                if (preset === 'completed_desc') setFilters({ sort: 'completedAt', order: 'desc' });
+              }}
+              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            >
+              <option value="updated_desc">Sort: Newest</option>
+              <option value="updated_asc">Sort: Oldest</option>
+              <option value="created_desc">Sort: Created</option>
+              <option value="created_asc">Sort: Created (oldest)</option>
+              <option value="completed_desc">Sort: Completed</option>
+            </select>
+
+            {role !== 'EMPLOYEE' ? (
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
               >
-                <option value="">All priorities</option>
-                <option value="P1">P1</option>
-                <option value="P2">P2</option>
-                <option value="P3">P3</option>
-                <option value="P4">P4</option>
-              </select>
+                <SlidersHorizontal className="h-4 w-4" />
+                Advanced
+                {activeFilterCount > 0 ? (
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
 
-              <select
-                value={sortPreset}
-                onChange={(event) => {
-                  const preset = event.target.value as SortPreset;
-                  if (preset === 'updated_desc') setFilters({ sort: 'updatedAt', order: 'desc' });
-                  if (preset === 'updated_asc') setFilters({ sort: 'updatedAt', order: 'asc' });
-                  if (preset === 'created_desc') setFilters({ sort: 'createdAt', order: 'desc' });
-                  if (preset === 'created_asc') setFilters({ sort: 'createdAt', order: 'asc' });
-                  if (preset === 'completed_desc') setFilters({ sort: 'completedAt', order: 'desc' });
-                }}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            {onCreateTicket ? (
+              <button
+                type="button"
+                onClick={onCreateTicket}
+                className="ml-auto inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
               >
-                <option value="updated_desc">Sort by: Newest</option>
-                <option value="updated_asc">Sort by: Oldest</option>
-                <option value="created_desc">Sort by: Created (newest)</option>
-                <option value="created_asc">Sort by: Created (oldest)</option>
-                <option value="completed_desc">Sort by: Completed</option>
-              </select>
-
-              <div className="relative ml-auto min-w-[240px] flex-1 max-w-[360px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchDraft}
-                  onChange={(event) => setSearchDraft(event.target.value)}
-                  placeholder="Search tickets..."
-                  className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
-                />
-              </div>
-
-              {onCreateTicket ? (
-                <button
-                  type="button"
-                  onClick={onCreateTicket}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ring/30 focus:ring-offset-1"
-                >
-                  <Plus className="h-4 w-4" />
-                  New Ticket
-                </button>
-              ) : null}
-            </div>
-
-            {showAdvancedFilters && role !== 'EMPLOYEE' ? (
-              <div className="mt-3">
-                <FilterPanel
-                  filters={filters}
-                  setFilters={setFilters}
-                  clearFilters={clearFilters}
-                  hasActiveFilters={hasActiveFilters}
-                  showTeamFilter={role === 'OWNER'}
-                  teamsList={teamsList}
-                  assignableUsers={assignableUsers}
-                  requesterOptions={requesterOptions}
-                  onSaveSuccess={() => {
-                    toast.success('View saved');
-                    loadTickets();
-                  }}
-                  onError={(message) => toast.error(message)}
-                  onClose={() => setShowAdvancedFilters(false)}
-                />
-              </div>
+                <Plus className="h-4 w-4" />
+                New Ticket
+              </button>
             ) : null}
           </div>
-
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">{countLabel}</p>
-            </div>
-
-            {selection.isSomeSelected && role !== 'EMPLOYEE' ? (
-              <div className="mt-3">
-                <BulkActionsToolbar
-                  selectedCount={selection.selectedCount}
-                  onClearSelection={selection.clearSelection}
-                  onBulkAssign={handleBulkAssign}
-                  onBulkTransfer={handleBulkTransfer}
-                  onBulkStatus={handleBulkStatus}
-                  onBulkPriority={handleBulkPriority}
-                  teamsList={teamsList}
-                  assignableUsers={assignableUsers}
-                  onSuccess={(message) => {
-                    toast.success(message);
-                    loadTickets();
-                  }}
-                  onError={(message) => toast.error(message)}
-                />
-              </div>
-            ) : null}
-
-            {ticketError ? (
-              <div className="mt-3">
-                <ErrorState
-                  title="Unable to load tickets"
-                  description={ticketError}
-                  onRetry={loadTickets}
-                  secondaryAction={{ label: 'Go to Dashboard', onClick: () => navigate('/dashboard') }}
-                />
-              </div>
-            ) : null}
-
-            {loadingTickets ? (
-              <div className="mt-3 space-y-2 rounded-2xl border border-border bg-card p-4">
-                {Array.from({ length: 7 }).map((_, index) => (
-                  <div
-                    key={`ticket-row-skeleton-${index}`}
-                    className="h-14 rounded-lg border border-border/60 bg-muted/25 skeleton-shimmer"
-                  />
-                ))}
-              </div>
-            ) : null}
-
-            {!loadingTickets && !ticketError && tickets.length === 0 ? (
-              <div className="mt-3">
-                <EmptyState
-                  title="No tickets found"
-                  description="Try adjusting your filters or create a new ticket to get started."
-                  primaryAction={onCreateTicket ? { label: 'Create Ticket', onClick: onCreateTicket } : undefined}
-                  secondaryAction={hasActiveFilters ? { label: 'Clear filters', onClick: clearFilters } : undefined}
-                />
-              </div>
-            ) : null}
-
-            {!loadingTickets && tickets.length > 0 ? (
-              <div className="mt-3">
-                <TicketTableView
-                  tickets={tickets}
-                  role={role}
-                  selection={{
-                    isSelected: selection.isSelected,
-                    toggle: selection.toggle,
-                    toggleAll: selection.toggleAll,
-                    isAllSelected: selection.isAllSelected,
-                  }}
-                  onRowClick={(ticket) => navigate(`/tickets/${ticket.id}`)}
-                />
-              </div>
-            ) : null}
-          </div>
-
-          {!loadingTickets && listMeta && listMeta.total > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4">
-              <p className="text-sm text-muted-foreground">
-                Showing {pageStart}-{pageEnd} of {listMeta.total}
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground">
-                  Rows per page
-                  <select
-                    value={filters.pageSize}
-                    onChange={(event) => setFilters({ pageSize: Number(event.target.value), page: 1 })}
-                    className="bg-transparent text-foreground focus:outline-none"
-                  >
-                    <option value={20}>20</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  disabled={listMeta.page <= 1}
-                  onClick={() => setFilters({ page: listMeta.page - 1 })}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground">
-                  {listMeta.page}
-                </span>
-                <button
-                  type="button"
-                  disabled={listMeta.page >= listMeta.totalPages}
-                  onClick={() => setFilters({ page: listMeta.page + 1 })}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
+
+      <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-6">
+        <p className="text-sm text-gray-600">{countLabel}</p>
+
+        {selection.isSomeSelected && role !== 'EMPLOYEE' ? (
+          <div className="mt-4">
+            <BulkActionsToolbar
+              selectedCount={selection.selectedCount}
+              onClearSelection={selection.clearSelection}
+              onBulkAssign={handleBulkAssign}
+              onBulkTransfer={handleBulkTransfer}
+              onBulkStatus={handleBulkStatus}
+              onBulkPriority={handleBulkPriority}
+              teamsList={teamsList}
+              assignableUsers={assignableUsers}
+              onSuccess={(message) => {
+                toast.success(message);
+                loadTickets();
+              }}
+              onError={(message) => toast.error(message)}
+            />
+          </div>
+        ) : null}
+
+        {ticketError ? (
+          <div className="mt-4">
+            <ErrorState
+              title="Unable to load tickets"
+              description={ticketError}
+              onRetry={loadTickets}
+              secondaryAction={{ label: 'Go to Dashboard', onClick: () => navigate('/dashboard') }}
+            />
+          </div>
+        ) : null}
+
+        {loadingTickets ? (
+          <div className="mt-4 space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div
+                key={`ticket-row-skeleton-${index}`}
+                className="h-14 rounded-md border border-gray-200 bg-gray-100 skeleton-shimmer"
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {!loadingTickets && !ticketError && tickets.length === 0 ? (
+          <div className="mt-4">
+            <EmptyState
+              title="No tickets found"
+              description="Try adjusting your filters or create a new ticket to get started."
+              primaryAction={onCreateTicket ? { label: 'Create Ticket', onClick: onCreateTicket } : undefined}
+              secondaryAction={hasActiveFilters ? { label: 'Clear filters', onClick: clearFilters } : undefined}
+            />
+          </div>
+        ) : null}
+
+        {!loadingTickets && tickets.length > 0 ? (
+          <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            <TicketTableView
+              tickets={tickets}
+              role={role}
+              selection={{
+                isSelected: selection.isSelected,
+                toggle: selection.toggle,
+                toggleAll: selection.toggleAll,
+                isAllSelected: selection.isAllSelected,
+              }}
+              onRowClick={(ticket) => navigate(`/tickets/${ticket.id}`)}
+            />
+          </div>
+        ) : null}
+
+        {!loadingTickets && listMeta && listMeta.total > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-b-lg border border-t-0 border-gray-200 bg-gray-50 px-6 py-4">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{pageStart}</span> to <span className="font-medium">{pageEnd}</span> of{' '}
+              <span className="font-medium">{listMeta.total}</span> results
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">
+                Rows
+                <select
+                  value={filters.pageSize}
+                  onChange={(event) => setFilters({ pageSize: Number(event.target.value), page: 1 })}
+                  className="bg-transparent text-sm text-gray-700 focus:outline-none"
+                >
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+
+              <button
+                type="button"
+                disabled={listMeta.page <= 1}
+                onClick={() => setFilters({ page: listMeta.page - 1 })}
+                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+
+              {visiblePages.map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setFilters({ page })}
+                  className={`rounded-md px-3 py-2 text-sm ${
+                    page === listMeta.page
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                disabled={listMeta.page >= listMeta.totalPages}
+                onClick={() => setFilters({ page: listMeta.page + 1 })}
+                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {showAdvancedFilters && role !== 'EMPLOYEE' ? (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/50"
+          onClick={() => setShowAdvancedFilters(false)}
+        >
+          <div
+            className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-fade-in"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+              <h2 className="text-lg font-semibold text-gray-900">Advanced Filters</h2>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters(false)}
+                className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close advanced filters"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <FilterPanel
+                filters={filters}
+                setFilters={setFilters}
+                clearFilters={clearFilters}
+                hasActiveFilters={hasActiveFilters}
+                showTeamFilter={role === 'OWNER'}
+                teamsList={teamsList}
+                assignableUsers={assignableUsers}
+                requesterOptions={requesterOptions}
+                drawerMode
+                onSaveSuccess={() => {
+                  toast.success('View saved');
+                  loadTickets();
+                }}
+                onError={(message) => toast.error(message)}
+                onClose={() => setShowAdvancedFilters(false)}
+              />
+            </div>
+
+            <div className="sticky bottom-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-4">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-sm text-gray-600 transition-colors hover:text-gray-900"
+              >
+                Clear all
+              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters(false)}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters(false)}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  Apply Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
